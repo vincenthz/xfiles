@@ -1,0 +1,31 @@
+Name:                fnb
+Version:             0.1.0
+Synopsis:            Backup files
+Description:
+    Backup files with de-duplication
+License:             BSD3
+License-file:        LICENSE
+Copyright:           Vincent Hanquez <vincent@snarc.org>
+Author:              Vincent Hanquez <vincent@snarc.org>
+Maintainer:          vincent@snarc.org
+Category:            Admin
+Stability:           experimental
+Build-Type:          Simple
+Homepage:            http://github.com/vincenthz/fnb
+Cabal-Version:       >=1.8
+data-files:          README.md
+
+Executable           fnb
+  Main-Is:           Fnb.hs
+  ghc-options:       -Wall -fno-warn-missing-signatures
+  Hs-Source-Dirs:    Src
+  Build-depends:     base >= 4 && < 5
+                   , directory
+                   , filepath
+                   , fileformat
+                   , hit
+                   , unix
+
+source-repository head
+  type: git
+  location: git://github.com/vincenthz/fnb
