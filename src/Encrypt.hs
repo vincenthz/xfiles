@@ -1,4 +1,3 @@
-{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 -- an old encryption program. do not use anymore.
@@ -7,14 +6,13 @@ module Main where
 import qualified Crypto.KDF.PBKDF2 as PBKDF2
 import Crypto.Cipher.AES
 import Crypto.Cipher.Types
-import "cryptonite" Crypto.Hash
+import Crypto.Hash
 import Crypto.Error
 import Control.Applicative
 import Control.Exception
 import System.IO
 import System.Environment
 import qualified Data.ByteString as B
-import Options.Applicative
 import qualified Data.ByteString.UTF8 as UTF8
 import qualified Data.ByteArray as BA
 
@@ -35,7 +33,7 @@ getKey = do
 salt :: B.ByteString
 salt = "ctrfile"
 
-doCtr key iv hIn hOut = loop iv
+doCtr key startIv hIn hOut = loop startIv
   where loop iv = do
             content <- B.hGet hIn 1024
             B.hPut hOut $ ctrCombine key iv content
