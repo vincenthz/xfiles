@@ -27,6 +27,7 @@ Library
                    , Tools.ChronoFs.Config
                    , Tools.ChronoFs.Utils
                    , Tools.ChronoFs.Display
+                   , System.Directory.Traverse
   Other-modules:
   Build-depends:     base >= 4.3 && < 5
                    , bytestring
@@ -82,4 +83,19 @@ Executable           chronofs-shell
   ghc-options:       -Wall -fno-warn-orphans -fno-warn-missing-signatures
   Build-depends:     base, mtl, xfiles, data-default-class, terminfo, system-filepath, time, old-locale, regex-posix
   Buildable:         False
+  default-language:  Haskell2010
+
+Executable           safe-shred
+  Main-Is:           SafeShred.hs
+  hs-source-dirs:    src
+  ghc-options:       -Wall -fno-warn-orphans -fno-warn-missing-signatures
+  Build-depends:     base >= 4 && < 5
+                   , xfiles
+                   , cryptonite
+                   , bytestring
+                   , filepath
+                   , directory
+                   , fileformat
+                   , process
+  Buildable:         True
   default-language:  Haskell2010

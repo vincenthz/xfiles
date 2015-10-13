@@ -8,8 +8,8 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 import           Data.List
 import           Data.FileFormat
-import           SafeShred.Traverse
 import           System.Directory
+import           System.Directory.Traverse
 import           System.Environment
 import           System.Exit
 import           System.FilePath

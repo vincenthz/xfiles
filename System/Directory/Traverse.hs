@@ -1,5 +1,5 @@
 -- |
--- Module      : SafeShred.Traverse
+-- Module      : System.Directory.Traverse
 -- License     : BSD-style
 -- Maintainer  : Vincent Hanquez <vincent@snarc.org>
 -- Stability   : experimental
@@ -8,7 +8,7 @@
 -- Simple helper to traverse through directories and files.
 --
 {-# LANGUAGE ScopedTypeVariables #-}
-module SafeShred.Traverse
+module System.Directory.Traverse
     ( dirTraverse
     , dirTraverse_
     ) where
