@@ -29,7 +29,7 @@ Library
                    , mtl
                    , system-filepath
                    , system-fileio
-                   , data-default
+                   , data-default-class
                    , cereal
                    , containers
                    , hashable
@@ -55,7 +55,7 @@ Executable           chronofs
                    , chronofs
                    , system-filepath
                    , system-fileio
-                   , data-default
+                   , data-default-class
                    , hashable
                    , base16-bytestring
                    , hashtables
@@ -72,5 +72,5 @@ Executable           chronofs-shell
   Main-Is:           Shell.hs
   hs-source-dirs:    Src
   ghc-options:       -Wall -fno-warn-orphans -fno-warn-missing-signatures
-  Build-depends:     base, mtl, chronofs, simple-readline, data-default, terminfo, system-filepath, time, old-locale, regex-posix
+  Build-depends:     base, mtl, chronofs, simple-readline, data-default-class, terminfo, system-filepath, time, old-locale, regex-posix
   Buildable: True
