@@ -11,7 +11,8 @@ import Tools.ChronoFs.Marshall
 import Data.FileFormat (getFileformatFrom, FileFormat)
 
 import Filesystem (createDirectory, readFile, removeFile, IOMode(..), withFile)
-import Filesystem.Path.CurrentOS
+import Filesystem.Path
+import Filesystem.Path.Rules
 
 import Control.Applicative
 
@@ -46,7 +47,7 @@ writeAsHash tmpFile destDir f = do
         finalDir  = destDir </> fromString hashDir
         finalName = finalDir </> fromString hashFile
     createDirectory True finalDir
-    rename (encode tmpFile) (encode finalName)
+    rename (encode posix tmpFile) (encode posix finalName)
     return hash
 
 -- write a list of entities as a new meta file
@@ -80,7 +81,7 @@ pathMeta hash = augment <$> getBDir
 -- | Return the path to a backup called @name
 pathBackup :: (Functor f, MonadReader BackupConfig f) => BackupName -> f FilePath
 pathBackup name = augment <$> getBDir
-  where augment bdir = bdir </> "backup" </> decodeString name
+  where augment bdir = bdir </> "backup" </> decodeString posix name
 
 -- | read the meta information associated with a hash
 readMeta :: (Functor f, MonadReader BackupConfig f, MonadIO f)
@@ -102,8 +103,8 @@ resolvePath :: (Functor m, MonadIO m, MonadReader BackupConfig m)
 resolvePath rootHash rootPath = loop rootHash (splitDirectories rootPath)
   where loop hash []     = return $ Right hash
         loop hash (p:ps)
-            | encodeString p == "/" = loop hash ps
-            | otherwise             = do
+            | encodeString posix p == "/" = loop hash ps
+            | otherwise                   = do
                 --liftIO $ putStrLn ("resolvePath: " ++ encodeString p ++ " " ++ show ps)
                 ents <- either error id <$> readMeta hash
                 case find (\e -> entName e == p) ents of
@@ -114,7 +115,7 @@ getFileformat :: FilePath -> IO FileFormat
 getFileformat ent = withFile ent ReadMode (\h -> getFileformatFrom <$> B.hGet h 512)
 
 hardlink :: FilePath -> FilePath -> IO ()
-hardlink origName symbolicName = createLink (encode origName) (encode symbolicName)
+hardlink origName symbolicName = createLink (encode posix origName) (encode posix symbolicName)
 
 symlink :: FilePath -> FilePath -> IO ()
-symlink origName symbolicName = createSymbolicLink (encode origName) (encode symbolicName)
+symlink origName symbolicName = createSymbolicLink (encode posix origName) (encode posix symbolicName)

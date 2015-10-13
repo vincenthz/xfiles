@@ -2,16 +2,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Main where
 
 import Filesystem (getHomeDirectory, createDirectory, isFile, copyFile, writeFile, listDirectory)
-import Filesystem.Path.CurrentOS
+import Filesystem.Path
+import Filesystem.Path.Rules
 import Prelude hiding (FilePath, writeFile, readFile)
 import "mtl" Control.Monad.State
 import Control.Monad.Reader
 
 import Control.Applicative
-import Data.Default
+import Data.Default.Class
 import Data.String
 import Data.Time.Clock.POSIX
 import System.Posix.Files.ByteString hiding (isDirectory)
@@ -54,12 +56,12 @@ cmdBackup opts backupName = do
         Just ent -> do
             (!hash,_) <- runBackup (writeEntAsHash [ent]) bs cfg
             putStrLn $ show $ stats finalState
-            let commitFilename = decode $ B.concat [BC.pack backupName, "-"
-                                                   ,(BC.pack $ show (truncate initialTime :: Integer)), "-"
-                                                   ,(BC.pack $ show (truncate finalTime :: Integer))]
+            let commitFilename = decode posix $ B.concat [BC.pack backupName, "-"
+                                                         ,(BC.pack $ show (truncate initialTime :: Integer)), "-"
+                                                         ,(BC.pack $ show (truncate finalTime :: Integer))]
             let commitFilepath = bdir </> "backup" </> commitFilename
             writeFile commitFilepath (hexHashAsBs hash `B.append` "\n")
-            putStrLn $ (encodeString commitFilename ++ " written in " ++ (show (finalTime - initialTime)))
+            putStrLn $ (encodeString posix commitFilename ++ " written in " ++ (show (finalTime - initialTime)))
     where 
           initCheck = do bdir <- asks backupDir
                          mapM_ (liftIO . createDirectory True) [ bdir, bdir </> "tmp", bdir </> "data", bdir </> "meta", bdir </> "backup" ]
@@ -71,7 +73,7 @@ cmdBackup opts backupName = do
                 m <- runIO (listDirectory dir) (return []) (return)
                 allEnts <- catMaybes <$> mapM (processEnt skipDir) m
                 !hash <- writeEntAsHash allEnts
-                !fs <- liftIO $ getSymbolicLinkStatus (encode dir)
+                !fs <- liftIO $ getSymbolicLinkStatus (encode posix dir)
                 return $ Just $ Ent { entType  = EntDir
                                     , entPerms = fileMode fs
                                     , entMTime = realToFrac $ modificationTime fs
@@ -88,7 +90,7 @@ cmdBackup opts backupName = do
                 | fileMetaType fm == SymbolicLink = doSymlink
                 | fileMetaType fm == RegularFile  = doFile
                 | otherwise                       = return Nothing
-                where doSymlink = do lnk <- liftIO $ readSymbolicLink (encode ent)
+                where doSymlink = do lnk <- liftIO $ readSymbolicLink (encode posix ent)
                                      return $ Just $ Ent { entType = EntLink
                                                          , entPerms = fileMetaMode fm
                                                          , entMTime = realToFrac $ fileMetaModTime fm
@@ -123,7 +125,7 @@ cmdBackup opts backupName = do
                                         runIO_ (createDirectory True finalDir)
                                         if useHard
                                             then runIO_ (hardlink ent finalName)
-                                            else runIO_ (copyFile ent tmpName >> rename (encode tmpName) (encode finalName))
+                                            else runIO_ (copyFile ent tmpName >> rename (encode posix tmpName) (encode posix finalName))
                             return $ Just $ Ent { entType  = EntFile
                                                 , entPerms = fileMetaMode fm
                                                 , entMTime = realToFrac $ fileMetaModTime fm
@@ -142,7 +144,7 @@ cmdBackup opts backupName = do
 cmdList opts = do
     bdir    <- getBackupDir opts
     backups <- listDirectory (bdir </> "backup")
-    mapM_ (putStrLn . encodeString . filename) backups
+    mapM_ (putStrLn . encodeString posix . filename) backups
 
 cmdListName = undefined
 
@@ -163,14 +165,14 @@ cmdGet opts name = do
 data EntPrint = Raw | Pretty
 
 printEnt Raw ent = do
-    putStrLn ("filename " ++ encodeString (entName ent))
+    putStrLn ("filename " ++ encodeString posix (entName ent))
     putStrLn ("hash " ++ (hexHash $ entHash ent))
     putStrLn ("perms " ++ (show $ entPerms ent))
     putStrLn ("mtime " ++ (show $ entMTime ent))
     putStrLn ("ctime " ++ (show $ entMTime ent))
 
 printEnt Pretty ent = do
-    putStrLn ("+ " ++ encodeString (entName ent) ++ marker ++ " (" ++ showSmall (hexHash $ entHash ent) ++ ")")
+    putStrLn ("+ " ++ encodeString posix (entName ent) ++ marker ++ " (" ++ showSmall (hexHash $ entHash ent) ++ ")")
     where showSmall = take 16
           marker = case entType ent of
                         EntLink  -> "@"
@@ -198,7 +200,7 @@ cmdShow opts name Nothing = do
         hash <- readBackup name
         ents <- either error id <$> readMeta hash
         liftIO $ mapM_ (printEnt Pretty) ents
-cmdShow opts name (Just (decodeString -> dir))
+cmdShow opts name (Just (decodeString posix -> dir))
     | absolute dir = error "source path cannot be absolute"
     | otherwise    = getBackupDir opts >>= runBackupRO doShow . defaultBackupConfig
         where doShow = do
@@ -210,7 +212,7 @@ cmdShow opts name (Just (decodeString -> dir))
                     liftIO $ printEnt Pretty rootEnt
                     liftIO $ mapM_ (printEnt Pretty) children
 
-cmdDu opts name (decodeString -> dir)
+cmdDu opts name (decodeString posix -> dir)
     | absolute dir = error "source path cannot be absolute"
     | otherwise    = getBackupDir opts >>= runBackupRO doDu . defaultBackupConfig
         where doDu = do
@@ -218,7 +220,7 @@ cmdDu opts name (decodeString -> dir)
                     ents <- either error id <$> readMeta hash
                     undefined
 
-cmdRestore opts name (decodeString -> rootDir) (decodeString -> dirTo)
+cmdRestore opts name (decodeString posix -> rootDir) (decodeString posix -> dirTo)
     | absolute rootDir = error "source path cannot be absolute"
     | otherwise        = getBackupDir opts >>= runBackupRO doRestore . defaultBackupConfig
   where doRestore = do

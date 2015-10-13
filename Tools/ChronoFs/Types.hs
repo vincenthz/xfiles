@@ -1,6 +1,6 @@
 module Tools.ChronoFs.Types where
 
-import Data.Default
+import Data.Default.Class
 import System.Posix.Types
 import Data.Time.Clock.POSIX
 import Data.ByteString (ByteString)

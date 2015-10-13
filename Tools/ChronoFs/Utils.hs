@@ -12,7 +12,8 @@ import System.Console.Terminfo
 import System.IO (withFile, IOMode(..))
 import qualified System.Posix.Files.ByteString as RawFiles
 import Filesystem (getHomeDirectory)
-import Filesystem.Path.CurrentOS
+import Filesystem.Path.Rules
+import Filesystem.Path
 import Text.Printf
 import Tools.ChronoFs.Monad
 import Tools.ChronoFs.Config
@@ -49,9 +50,9 @@ data AllOpt = UserInstall | ExplicitInstall String
 getBackupDir :: [AllOpt] -> IO FilePath
 getBackupDir opts = do
     home <- getHomeDirectory
-    let userPath = (home </> decodeString backupDirName)
+    let userPath = (home </> decodeString posix backupDirName)
     return $ maybe userPath id $ foldl (doAcc userPath) Nothing opts
-  where doAcc _  _   (ExplicitInstall p) = Just $ decodeString p
+  where doAcc _  _   (ExplicitInstall p) = Just $ decodeString posix p
         doAcc hf _    UserInstall        = Just hf
         doAcc _  acc _                   = acc
 
@@ -76,7 +77,7 @@ hexHash (Hash b) = BC.unpack $ Base16.encode b
 
 getFileMetas :: FilePath -> IO (Either String FileMeta)
 getFileMetas filepath = catchIO ("getFileMetas " ++ show filepath) $ do
-    fs <- RawFiles.getSymbolicLinkStatus (encode filepath)
+    fs <- RawFiles.getSymbolicLinkStatus (encode posix filepath)
     return $ FileMeta (toFt fs)
                       (RawFiles.fileMode fs)
                       (RawFiles.modificationTimeHiRes fs)
@@ -93,7 +94,7 @@ getFileMetas filepath = catchIO ("getFileMetas " ++ show filepath) $ do
             | otherwise                     = error "unrecognized file type"
 
 getFileHash :: FilePath -> IO Hash
-getFileHash f = withFile (encodeString f) ReadMode $ \h -> loop h SHA512.init
+getFileHash f = withFile (encodeString posix f) ReadMode $ \h -> loop h SHA512.init
     where loop h !c = do
                 r <- B.hGet h (16*1024)
                 if B.length r == 0

@@ -4,7 +4,7 @@ import Tools.ChronoFs.Types
 import Data.Serialize.Put
 import Data.Serialize.Get
 import qualified Data.ByteString as B
-import Filesystem.Path.CurrentOS as FP (encode, decode)
+import Filesystem.Path.Rules as FP (encode, decode, posix)
 import Control.Applicative
 import Control.Monad
 
@@ -21,7 +21,8 @@ marshallEnt ent = runPut $ do
         EntLink -> linkAsHash (entHash ent)
         _       -> putHash (entHash ent)
     putByteString nameMarshalled
-  where nameMarshalled = FP.encode $ entName ent
+  where nameMarshalled :: B.ByteString
+        nameMarshalled = FP.encode FP.posix $ entName ent
 
         putHash (Hash b)    = putByteString b
         linkAsHash (Hash b) = putByteString btrans
@@ -51,7 +52,7 @@ parseEnt = do
     mtime <- getWord64le
     ctime <- getWord64le
     h <- if t == EntLink then getLinkAsHash else getHash
-    filename <- FP.decode <$> getByteString (fromIntegral len)
+    filename <- FP.decode FP.posix <$> getByteString (fromIntegral len)
     return $ Ent { entType  = t
                  , entPerms = fromIntegral perms
                  , entMTime = realToFrac mtime

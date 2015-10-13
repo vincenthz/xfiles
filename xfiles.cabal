@@ -1,0 +1,85 @@
+Name:                xfiles
+Version:             0.1
+Synopsis:            Xfiles
+Description:         personal set of tools for backup and file manipulation
+License:             BSD3
+License-file:        LICENSE
+Copyright:           Vincent Hanquez <vincent@snarc.org>
+Author:              Vincent Hanquez <vincent@snarc.org>
+Maintainer:          vincent@snarc.org
+Category:            Cryptography
+Stability:           experimental
+Build-Type:          Simple
+Homepage:            https://github.com/vincenthz/xfiles
+Bug-reports:         https://github.com/vincenthz/xfiles/issues
+Cabal-Version:       >=1.10
+
+source-repository head
+  type: git
+  location: https://github.com/vincenthz/xfiles
+
+Library
+  Exposed-Modules:   Tools.ChronoFs
+                   , Tools.ChronoFs.Marshall
+                   , Tools.ChronoFs.Types
+                   , Tools.ChronoFs.Monad
+                   , Tools.ChronoFs.Operations
+                   , Tools.ChronoFs.Config
+                   , Tools.ChronoFs.Utils
+                   , Tools.ChronoFs.Display
+  Other-modules:
+  Build-depends:     base >= 4.3 && < 5
+                   , bytestring
+                   , memory >= 0.8
+                   -- , cryptonite
+                   , mtl
+                   , system-filepath
+                   , system-fileio
+                   , data-default-class
+                   , cereal
+                   , containers
+                   , hashable
+                   , hashtables
+                   , bytestring
+                   , cryptohash
+                   , filepath
+                   , directory
+                   , fileformat
+                   , terminfo
+                   , transformers
+                   , base16-bytestring
+                   , unix
+                   , time
+  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans
+  default-language:  Haskell2010
+
+Executable           chronofs
+  Main-Is:           Backup.hs
+  hs-source-dirs:    src
+  ghc-options:       -Wall -fno-warn-orphans -fno-warn-missing-signatures
+  Build-depends:     base >= 4 && < 5
+                   , mtl
+                   , xfiles
+                   , system-filepath
+                   , system-fileio
+                   , data-default-class
+                   , hashable
+                   , base16-bytestring
+                   , hashtables
+                   , bytestring
+                   , filepath
+                   , directory
+                   , fileformat
+                   , terminfo
+                   , unix
+                   , time
+  Buildable:         True
+  default-language:  Haskell2010
+
+Executable           chronofs-shell
+  Main-Is:           Shell.hs
+  hs-source-dirs:    Src
+  ghc-options:       -Wall -fno-warn-orphans -fno-warn-missing-signatures
+  Build-depends:     base, mtl, xfiles, data-default-class, terminfo, system-filepath, time, old-locale, regex-posix
+  Buildable:         False
+  default-language:  Haskell2010
