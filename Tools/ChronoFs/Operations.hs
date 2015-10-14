@@ -31,8 +31,12 @@ import Prelude hiding (FilePath, writeFile, readFile)
 
 type BackupName = String
 
--- | Copy a file to a temporary destination then rename it to be
--- the Hash(content) in the @dest
+-- | Copy data from a callback to the file representing its content (by hash)
+--
+-- Create a new temporary file that is going to receive data from a callback function.
+--
+-- when this callback function is done, the temporary file is renamed to the hash(content)
+-- filename in the @destDir dir.
 writeAsHash :: FilePath
             -> FilePath
             -> ((Context HashT -> BC.ByteString -> IO (Context HashT))
@@ -91,23 +95,25 @@ readMeta hash = unmarshallEnts <$> (pathMeta hash >>= liftIO . readFile)
 
 readMeta_ :: (Functor f, MonadReader BackupConfig f, MonadIO f)
           => Hash -> f [Ent]
-readMeta_ hash = either error id <$> readMeta hash
+readMeta_ hash = either (\e -> error $ "read meta failed: " ++ e) id <$> readMeta hash
 
+-- | Read a backup file
 readBackup :: (Functor m, MonadIO m, MonadReader BackupConfig m)
            => BackupName -> m (Either String Hash)
 readBackup name = do
     backupFile <- pathBackup name
-    content <- liftIO (readFile backupFile)
+    content    <- liftIO (readFile backupFile)
     return $ hashHexAsBs (head $ BC.lines content) -- FIXME make it headless
 
 readBackup_ :: (Functor m, MonadIO m, MonadReader BackupConfig m)
             => BackupName -> m Hash
-readBackup_ name = either error id <$> readBackup name
+readBackup_ name = either (\e -> error $ "read backup failed: " ++ e) id <$> readBackup name
 
 getBDir :: MonadReader BackupConfig m => m FilePath
 getBDir = asks backupDir
 
--- hash of the base directory
+-- | Resolve the path recursively from the root hash
+-- and if found, return the hash associated with the latest element of the path asked
 resolvePath :: (Functor m, MonadIO m, MonadReader BackupConfig m)
             => Hash -> FilePath -> m (Either String Hash)
 resolvePath rootHash rootPath = loop rootHash (splitDirectories rootPath)
@@ -116,7 +122,7 @@ resolvePath rootHash rootPath = loop rootHash (splitDirectories rootPath)
             | encodeString posix p == "/" = loop hash ps
             | otherwise                   = do
                 --liftIO $ putStrLn ("resolvePath: " ++ encodeString p ++ " " ++ show ps)
-                ents <- either error id <$> readMeta hash
+                ents <- readMeta_ hash
                 case find (\e -> entName e == p) ents of
                     Nothing  -> return $ Left ("entity " ++ show p ++ " not found in " ++ show rootPath) 
                     Just ent ->

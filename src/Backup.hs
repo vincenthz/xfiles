@@ -43,9 +43,9 @@ cmdBackup opts backupName = do
     term <- setupTermFromEnv
     let cfg = BackupConfig { backupDir = bdir, backupUseHardlinks = True }
         bs  = BackupState
-                { ignoreFormats= defaultBadFileformats
-                , terminal     = term
-                , stats        = def
+                { ignoreFormats = defaultBadFileformats
+                , terminal      = term
+                , stats         = def
                 }
     initialTime <- getPOSIXTime
     (ment,finalState) <- runBackup (initCheck >> loop bdir home) bs cfg
