@@ -5,6 +5,7 @@ import           Data.FileFormat
 import           System.Directory
 import           System.Directory.Traverse
 import           System.Environment
+import           Data.FileFormat
 
 main = do
     args <- getArgs
@@ -12,11 +13,12 @@ main = do
   where
         -- skip git repository
         dirCallback log dirPath
-            | ".git" == dirPath = do
+            | "/.git" `isSuffixOf` dirPath = do
                 return False
             | otherwise = do
                 return True
 
         fileCallback log f = do
-            putStrLn ("" ++ f)
+            fo <- getFileformat f
+            putStrLn ("" ++ f ++ " : " ++ show fo)
             return ()            
