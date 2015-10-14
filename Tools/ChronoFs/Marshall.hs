@@ -1,4 +1,8 @@
-module Tools.ChronoFs.Marshall where
+module Tools.ChronoFs.Marshall
+    ( marshallEnt
+    , unmarshallEnt
+    , unmarshallEnts
+    ) where
 
 import Tools.ChronoFs.Types
 import Data.Serialize.Put

@@ -1,31 +1,46 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Tools.ChronoFs.Operations where
+module Tools.ChronoFs.Operations
+    ( readMeta
+    , readMeta_
+    , readBackup
+    , readBackup_
+    , resolvePath
+    , pathData
+    , pathMeta
+    , pathBackup
+    , removeData
+    , writeEntAsHash
+    -- * filesystem operations
+    , hardlink
+    , symlink
+    , getFileformat
+    ) where
 
-import Tools.ChronoFs.Types
-import Tools.ChronoFs.Utils
-import Tools.ChronoFs.Monad
-import Tools.ChronoFs.Marshall
+import           Tools.ChronoFs.Types
+import           Tools.ChronoFs.Utils
+import           Tools.ChronoFs.Monad
+import           Tools.ChronoFs.Marshall
 
-import Data.FileFormat (getFileformatFrom, FileFormat)
+import           Data.FileFormat (getFileformatFrom, FileFormat)
 
-import Filesystem (createDirectory, readFile, removeFile, IOMode(..), withFile)
-import Filesystem.Path
-import Filesystem.Path.Rules
+import           Filesystem (createDirectory, readFile, removeFile, IOMode(..), withFile)
+import           Filesystem.Path
+import           Filesystem.Path.Rules
 
-import Control.Applicative
+import           Control.Applicative
 
-import Data.String
-import Data.List
-import System.Posix.Files.ByteString hiding (isDirectory)
+import           Data.String
+import           Data.List
+import           System.Posix.Files.ByteString hiding (isDirectory)
 
-import Crypto.Hash hiding (hash)
+import           Crypto.Hash hiding (hash)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 
-import Control.Monad.State
-import Control.Monad.Reader
+import           Control.Monad.State
+import           Control.Monad.Reader
 
 import Prelude hiding (FilePath, writeFile, readFile)
 

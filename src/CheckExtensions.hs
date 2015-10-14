@@ -5,20 +5,20 @@ import           Data.FileFormat
 import           System.Directory
 import           System.Directory.Traverse
 import           System.Environment
-import           Data.FileFormat
 
 main = do
-    args <- getArgs
-    dirTraverse_ "." (fileCallback log) (dirCallback log)
+    argDirs <- getArgs
+    let dirs = if null argDirs then ["."] else argDirs
+    mapM_ (\d -> dirTraverse_ d fileCallback dirCallback) dirs
   where
         -- skip git repository
-        dirCallback log dirPath
+        dirCallback dirPath
             | "/.git" `isSuffixOf` dirPath = do
                 return False
             | otherwise = do
                 return True
 
-        fileCallback log f = do
+        fileCallback f = do
             fo <- getFileformat f
             putStrLn ("" ++ f ++ " : " ++ show fo)
             return ()            

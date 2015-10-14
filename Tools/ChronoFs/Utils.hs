@@ -3,27 +3,27 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Tools.ChronoFs.Utils where
 
-import Control.Applicative
-import Control.Monad (when, (>=>))
-import Control.Monad.IO.Class
-import Control.Monad.State (gets, MonadState)
+import           Control.Applicative
+import           Control.Monad (when, (>=>))
+import           Control.Monad.IO.Class
+import           Control.Monad.State (gets, MonadState)
 import qualified Control.Exception as E
-import System.Console.Terminfo
-import System.IO (withFile, IOMode(..), Handle)
+import           System.Console.Terminfo
+import           System.IO (withFile, IOMode(..), Handle)
 import qualified System.Posix.Files.ByteString as RawFiles
-import Filesystem (getHomeDirectory)
-import Filesystem.Path.Rules
-import Filesystem.Path
-import Text.Printf
-import Tools.ChronoFs.Monad
-import Tools.ChronoFs.Config
-import Tools.ChronoFs.Types
+import           Filesystem (getHomeDirectory)
+import           Filesystem.Path.Rules
+import           Filesystem.Path
+import           Text.Printf
+import           Tools.ChronoFs.Monad
+import           Tools.ChronoFs.Config
+import           Tools.ChronoFs.Types
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString as B
 import qualified Data.ByteArray.Encoding as BA
-import Prelude hiding (FilePath)
+import           Prelude hiding (FilePath)
 
-import Crypto.Hash
+import           Crypto.Hash
 
 printTerminalLn :: (MonadState BackupState m, MonadIO m) => Color -> [Char] -> m ()
 printTerminalLn color s = printTerminal color (s ++ "\n")

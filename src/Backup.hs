@@ -30,12 +30,15 @@ import qualified Data.ByteString.Char8 as BC
 import System.Console.GetOpt
 import System.Console.Terminfo
 
+import Tools.ChronoFs
+{-
 import Tools.ChronoFs.Types
 import Tools.ChronoFs.Monad
 import Tools.ChronoFs.Display
 import Tools.ChronoFs.Utils
 import Tools.ChronoFs.Operations
 import Tools.ChronoFs.Config
+-}
 
 cmdBackup opts backupName = do
     bdir <- getBackupDir opts

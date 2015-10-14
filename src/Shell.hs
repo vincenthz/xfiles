@@ -16,11 +16,12 @@ import System.Console.GetOpt
 
 import System.Exit
 import System.Environment
-import Tools.ChronoFs.Types
-import Tools.ChronoFs.Utils
+import Tools.ChronoFs
+--import Tools.ChronoFs.Types
+--import Tools.ChronoFs.Utils
 --import Tools.ChronoFs.Config
-import Tools.ChronoFs.Monad
-import Tools.ChronoFs.Operations
+--import Tools.ChronoFs.Monad
+--import Tools.ChronoFs.Operations
 
 import Data.List (find)
 import Data.Maybe

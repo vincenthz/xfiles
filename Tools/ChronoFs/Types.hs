@@ -1,4 +1,14 @@
-module Tools.ChronoFs.Types where
+module Tools.ChronoFs.Types
+    ( HashT
+    , hashSize
+    , Stats(..)
+    , EntType(..)
+    , Ent(..)
+    , FileType(..)
+    , FileMeta(..)
+    , EntContent(..)
+    , Hash(..)
+    ) where
 
 import Data.Default.Class
 import System.Posix.Types

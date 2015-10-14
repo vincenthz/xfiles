@@ -2,7 +2,20 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Tools.ChronoFs.Monad where
+module Tools.ChronoFs.Monad
+    ( BackupConfig(..)
+    , defaultBackupConfig
+    , BackupState(..)
+    , BackupRO
+    , runBackupRO
+    , Backup
+    , runBackup
+    , incErrors
+    , incDups
+    , incSkipped
+    , incProcessed
+    , addBytes
+    ) where
 
 import Filesystem.Path.CurrentOS
 import Control.Monad.State
@@ -13,15 +26,6 @@ import Tools.ChronoFs.Types
 import System.Console.Terminfo (Terminal)
 import Data.FileFormat
 import Prelude hiding (FilePath)
-
-{-
-
-data BackupMsg = BackupError String | BackupWarning String
-
-newtype BackupReports = BackupReports [BackupMsg]
-
-data BackupState = BackupState ?
--}
 
 data BackupConfig = BackupConfig
     { backupDir          :: FilePath
