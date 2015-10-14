@@ -12,6 +12,9 @@ import Crypto.Hash
 
 type HashT = SHA512
 
+hashSize :: Int
+hashSize = hashDigestSize (undefined :: HashT)
+
 data Stats = Stats
     { statsErrors    :: Int
     , statsDups      :: Int

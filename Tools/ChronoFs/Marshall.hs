@@ -61,7 +61,7 @@ parseEnt = do
                  , entName  = filename
                  }
   where getType = toTy <$> getWord8
-        getHash = ContentHash . Hash . maybe (error "digestFromByteString") id . digestFromByteString <$> getByteString 64
+        getHash = ContentHash . Hash . maybe (error "digestFromByteString") id . digestFromByteString <$> getByteString hashSize
         getLinkAsHash = ContentLink <$> (getWord16le >>= getByteString . fromIntegral)
 
         toTy 1 = EntDir
