@@ -32,7 +32,7 @@ Library
   Build-depends:     base >= 4.3 && < 5
                    , bytestring
                    , memory >= 0.8
-                   -- , cryptonite
+                   , cryptonite
                    , mtl
                    , system-filepath
                    , system-fileio
@@ -42,7 +42,6 @@ Library
                    , hashable
                    , hashtables
                    , bytestring
-                   , cryptohash
                    , filepath
                    , directory
                    , fileformat

@@ -95,7 +95,7 @@ cmdBackup opts backupName = do
                                                          , entPerms = fileMetaMode fm
                                                          , entMTime = realToFrac $ fileMetaModTime fm
                                                          , entCTime = realToFrac $ fileMetaChTime fm
-                                                         , entHash  = Hash lnk
+                                                         , entHash  = ContentLink lnk
                                                          , entName  = filename ent
                                                          }
                       doFile = addOne >> processFileNow ent fm (ty,hash)
@@ -130,7 +130,7 @@ cmdBackup opts backupName = do
                                                 , entPerms = fileMetaMode fm
                                                 , entMTime = realToFrac $ fileMetaModTime fm
                                                 , entCTime = realToFrac $ fileMetaChTime fm
-                                                , entHash  = hash
+                                                , entHash  = ContentHash hash
                                                 , entName  = filename ent
                                                 }
           addOne = incProcessed >> showStat False

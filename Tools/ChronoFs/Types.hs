@@ -8,6 +8,7 @@ import Filesystem.Path
 import Filesystem.Path.CurrentOS ()
 import Prelude hiding (FilePath)
 import Data.Word
+import Crypto.Hash
 
 data Stats = Stats
     { statsErrors    :: Int
@@ -25,7 +26,7 @@ data Ent = Ent
     , entPerms :: FileMode
     , entMTime :: !POSIXTime
     , entCTime :: !POSIXTime
-    , entHash  :: !Hash
+    , entHash  :: !EntContent
     , entName  :: !FilePath
     } deriving (Show,Eq)
 
@@ -40,7 +41,10 @@ data FileMeta = FileMeta
     , fileMetaSize    :: Word64
     } deriving (Show,Eq)
 
-newtype Hash = Hash ByteString
+data EntContent = ContentLink ByteString | ContentHash Hash
+    deriving (Show,Eq)
+
+newtype Hash = Hash (Digest SHA512)
     deriving (Show,Eq)
 
 instance Default Stats where

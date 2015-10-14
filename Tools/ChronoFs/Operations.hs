@@ -20,7 +20,7 @@ import Data.String
 import Data.List
 import System.Posix.Files.ByteString hiding (isDirectory)
 
-import qualified Crypto.Hash.SHA512 as SHA512
+import Crypto.Hash
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Base16 as Base16
@@ -34,13 +34,12 @@ type BackupName = String
 
 writeAsHash :: FilePath
             -> FilePath
-            -> ((SHA512.Ctx -> BC.ByteString -> IO SHA512.Ctx)
-            -> SHA512.Ctx -> IO SHA512.Ctx)
+            -> ((Context SHA512 -> BC.ByteString -> IO (Context SHA512)) -> Context SHA512 -> IO (Context SHA512))
             -> IO Hash
 writeAsHash tmpFile destDir f = do
     hash <- withFile tmpFile WriteMode $ \handl -> do
-        !r <- f (\ctx b -> B.hPut handl b >> return (SHA512.update ctx b)) SHA512.init
-        return $! Hash $! SHA512.finalize r
+        !r <- f (\ctx b -> B.hPut handl b >> return (hashUpdate ctx b)) hashInit
+        return $! Hash $! hashFinalize r
     let hashName  = hexHash hash
         hashDir   = take 2 hashName
         hashFile  = drop 2 $ hashName

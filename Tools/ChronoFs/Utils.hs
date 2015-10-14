@@ -9,7 +9,7 @@ import Control.Monad.IO.Class
 import Control.Monad.State (gets, MonadState)
 import qualified Control.Exception as E
 import System.Console.Terminfo
-import System.IO (withFile, IOMode(..))
+import System.IO (withFile, IOMode(..), Handle)
 import qualified System.Posix.Files.ByteString as RawFiles
 import Filesystem (getHomeDirectory)
 import Filesystem.Path.Rules
@@ -18,12 +18,12 @@ import Text.Printf
 import Tools.ChronoFs.Monad
 import Tools.ChronoFs.Config
 import Tools.ChronoFs.Types
-import qualified Data.ByteString.Base16 as Base16
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString as B
+import qualified Data.ByteArray.Encoding as BA
 import Prelude hiding (FilePath)
 
-import qualified Crypto.Hash.SHA512 as SHA512
+import Crypto.Hash
 
 printTerminalLn :: (MonadState BackupState m, MonadIO m) => Color -> [Char] -> m ()
 printTerminalLn color s = printTerminal color (s ++ "\n")
@@ -70,10 +70,10 @@ runIO_ :: IO () -> Backup ()
 runIO_ io = runIO io (return ()) return
 
 hexHashAsBs :: Hash -> BC.ByteString
-hexHashAsBs (Hash b) = Base16.encode b
+hexHashAsBs (Hash b) = BA.convertToBase BA.Base16 b
 
 hexHash :: Hash -> [Char]
-hexHash (Hash b) = BC.unpack $ Base16.encode b
+hexHash = BC.unpack . hexHashAsBs
 
 getFileMetas :: FilePath -> IO (Either String FileMeta)
 getFileMetas filepath = catchIO ("getFileMetas " ++ show filepath) $ do
@@ -94,12 +94,13 @@ getFileMetas filepath = catchIO ("getFileMetas " ++ show filepath) $ do
             | otherwise                     = error "unrecognized file type"
 
 getFileHash :: FilePath -> IO Hash
-getFileHash f = withFile (encodeString posix f) ReadMode $ \h -> loop h SHA512.init
-    where loop h !c = do
-                r <- B.hGet h (16*1024)
-                if B.length r == 0
-                    then return $! Hash $! SHA512.finalize c
-                    else loop h (SHA512.update c r)
+getFileHash f = withFile (encodeString posix f) ReadMode $ \h -> loop h hashInit
+  where loop :: Handle -> Context SHA512 -> IO Hash
+        loop h !c = do
+            r <- B.hGet h (16*1024)
+            if B.length r == 0
+                then return $! Hash $! hashFinalize c
+                else loop h (hashUpdate c r)
 
 catchIO :: String -> IO a -> IO (Either String a)
 catchIO s f = (Right <$> f) `E.catch` (\(exn :: E.IOException) -> return $ Left (s ++ " : " ++ show exn))

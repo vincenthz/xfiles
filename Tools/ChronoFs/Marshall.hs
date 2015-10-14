@@ -4,9 +4,11 @@ import Tools.ChronoFs.Types
 import Data.Serialize.Put
 import Data.Serialize.Get
 import qualified Data.ByteString as B
+import qualified Data.ByteArray as BA
 import Filesystem.Path.Rules as FP (encode, decode, posix)
 import Control.Applicative
 import Control.Monad
+import Crypto.Hash
 
 
 marshallEnt :: Ent -> B.ByteString
@@ -17,15 +19,13 @@ marshallEnt ent = runPut $ do
     putWord32le (fromIntegral $ entPerms ent)
     putWord64le (truncate $ entMTime ent)
     putWord64le (truncate $ entCTime ent)
-    case entType ent of
-        EntLink -> linkAsHash (entHash ent)
-        _       -> putHash (entHash ent)
+    putContent (entHash ent)
     putByteString nameMarshalled
   where nameMarshalled :: B.ByteString
         nameMarshalled = FP.encode FP.posix $ entName ent
 
-        putHash (Hash b)    = putByteString b
-        linkAsHash (Hash b) = putByteString btrans
+        putContent (ContentHash (Hash h)) = putByteString (BA.convert h)
+        putContent (ContentLink b) = putByteString btrans
           where btrans = runPut (putWord16le (fromIntegral $ B.length b) >> putByteString b)
 
         putType EntDir  = putWord8 1
@@ -45,13 +45,13 @@ unmarshallEnts bs = runGet (loopParseEnt) bs
 
 parseEnt :: Get Ent
 parseEnt = do
-    t <- getType
-    _ <- getWord8
-    len <- getWord16le
+    t     <- getType
+    _     <- getWord8
+    len   <- getWord16le
     perms <- getWord32le
     mtime <- getWord64le
     ctime <- getWord64le
-    h <- if t == EntLink then getLinkAsHash else getHash
+    h     <- if t == EntLink then getLinkAsHash else getHash
     filename <- FP.decode FP.posix <$> getByteString (fromIntegral len)
     return $ Ent { entType  = t
                  , entPerms = fromIntegral perms
@@ -61,8 +61,8 @@ parseEnt = do
                  , entName  = filename
                  }
   where getType = toTy <$> getWord8
-        getHash = Hash <$> getByteString 64
-        getLinkAsHash = Hash <$> (getWord16le >>= getByteString . fromIntegral)
+        getHash = ContentHash . Hash . maybe (error "digestFromByteString") id . digestFromByteString <$> getByteString 64
+        getLinkAsHash = ContentLink <$> (getWord16le >>= getByteString . fromIntegral)
 
         toTy 1 = EntDir
         toTy 2 = EntFile
