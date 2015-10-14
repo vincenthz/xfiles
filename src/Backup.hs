@@ -31,14 +31,6 @@ import System.Console.GetOpt
 import System.Console.Terminfo
 
 import Tools.ChronoFs
-{-
-import Tools.ChronoFs.Types
-import Tools.ChronoFs.Monad
-import Tools.ChronoFs.Display
-import Tools.ChronoFs.Utils
-import Tools.ChronoFs.Operations
-import Tools.ChronoFs.Config
--}
 
 cmdBackup opts backupName = do
     bdir <- getBackupDir opts
@@ -236,9 +228,9 @@ cmdRestore opts name (decodeString posix -> rootDir) (decodeString posix -> dirT
     | absolute rootDir = error "source path cannot be absolute"
     | otherwise        = getBackupDir opts >>= runBackupRO doRestore . defaultBackupConfig
   where doRestore = do
-                    hash <- readBackup_ name
-                    ents <- readMeta_ hash
-                    restoreDir ents rootDir
+            hash <- readBackup_ name
+            ents <- readMeta_ hash
+            restoreDir ents rootDir
           where -- restore a directory of stuff
                 restoreDir ents dir = do
                     let paths = splitDirectories dir

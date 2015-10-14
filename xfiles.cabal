@@ -20,15 +20,14 @@ source-repository head
 
 Library
   Exposed-Modules:   Tools.ChronoFs
-                   , Tools.ChronoFs.Marshall
+                   , System.Directory.Traverse
+  Other-modules:     Tools.ChronoFs.Marshall
                    , Tools.ChronoFs.Types
                    , Tools.ChronoFs.Monad
                    , Tools.ChronoFs.Operations
                    , Tools.ChronoFs.Config
                    , Tools.ChronoFs.Utils
                    , Tools.ChronoFs.Display
-                   , System.Directory.Traverse
-  Other-modules:
   Build-depends:     base >= 4.3 && < 5
                    , bytestring
                    , memory >= 0.8
