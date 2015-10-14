@@ -47,7 +47,6 @@ Library
                    , fileformat
                    , terminfo
                    , transformers
-                   , base16-bytestring
                    , unix
                    , time
   ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans

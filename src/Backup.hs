@@ -26,7 +26,6 @@ import Data.Maybe
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
-import qualified Data.ByteString.Base16 as Base16
 
 import System.Console.GetOpt
 import System.Console.Terminfo
@@ -78,7 +77,7 @@ cmdBackup opts backupName = do
                                     , entPerms = fileMode fs
                                     , entMTime = realToFrac $ modificationTime fs
                                     , entCTime = realToFrac $ statusChangeTime fs
-                                    , entHash  = hash
+                                    , entHash  = ContentHash hash
                                     , entName  = filename dir
                                     }
           processEnt skipDir ent = do
@@ -152,29 +151,35 @@ cmdGetMeta opts hashName = do
     bdir <- getBackupDir opts
     --runBackupRO (initCheck >> loop (backupDir bs) home) (defaultBackupConfig bdir)
     flip runBackupRO (defaultBackupConfig bdir) $ do
-        ents <- either error id <$> readMeta (Hash $ Base16.encode $ BC.pack $ hashName)
+        ents <- readMeta_ (either error id $ hashHex hashName)
         liftIO $ mapM_ (printEnt Raw) ents
 
 cmdGet opts name = do
     bdir <- getBackupDir opts
     flip runBackupRO (defaultBackupConfig bdir) $ do
-        hash <- readBackup name
-        ents <- either error id <$> readMeta hash
+        hash <- readBackup_ name
+        ents <- readMeta_ hash
         liftIO $ mapM_ (printEnt Raw) ents
 
 data EntPrint = Raw | Pretty
 
 printEnt Raw ent = do
     putStrLn ("filename " ++ encodeString posix (entName ent))
-    putStrLn ("hash " ++ (hexHash $ entHash ent))
+    case entHash ent of
+        ContentHash h   -> putStrLn ("hash " ++ hexHash h)
+        ContentLink lnk -> putStrLn ("link " ++ show lnk)
     putStrLn ("perms " ++ (show $ entPerms ent))
     putStrLn ("mtime " ++ (show $ entMTime ent))
     putStrLn ("ctime " ++ (show $ entMTime ent))
 
 printEnt Pretty ent = do
-    putStrLn ("+ " ++ encodeString posix (entName ent) ++ marker ++ " (" ++ showSmall (hexHash $ entHash ent) ++ ")")
-    where showSmall = take 16
-          marker = case entType ent of
+    putStrLn ("+ " ++ encodeString posix (entName ent) ++ marker ++ " (" ++ content ++ ")")
+  where 
+        content = case entHash ent of
+                    ContentLink lnk -> show lnk
+                    ContentHash h   -> showSmall (hexHash h)
+        showSmall = take 16
+        marker = case entType ent of
                         EntLink  -> "@"
                         EntFile  -> ""
                         EntDir   -> "/"
@@ -185,27 +190,31 @@ getRootEnt es l = doGet es l
               case find (\e -> entName e == x) ents of
                           Nothing -> error "couldn't find"
                           Just e  -> do
-                              childEnts <- either error id <$> readMeta (entHash e)
+                              childEnts <- readMeta_ (getHash e)
                               return (e,childEnts)
           doGet ents (x:xs) =
               case find (\e -> entName e == x) ents of
                           Nothing -> error "couldn't find"
                           Just e  -> do
-                              childEnts <- either error id <$> readMeta (entHash e)
+                              childEnts <- readMeta_ (getHash e)
                               doGet childEnts xs
+
+          getHash e = case entHash e of
+                            ContentLink lnk -> error "got link"
+                            ContentHash h   -> h
 
 cmdShow opts name Nothing = do
     bdir <- getBackupDir opts
     flip runBackupRO (defaultBackupConfig bdir) $ do
-        hash <- readBackup name
-        ents <- either error id <$> readMeta hash
+        hash <- readBackup_ name
+        ents <- readMeta_ hash
         liftIO $ mapM_ (printEnt Pretty) ents
 cmdShow opts name (Just (decodeString posix -> dir))
     | absolute dir = error "source path cannot be absolute"
     | otherwise    = getBackupDir opts >>= runBackupRO doShow . defaultBackupConfig
         where doShow = do
-                    hash <- readBackup name
-                    ents <- either error id <$> readMeta hash
+                    hash <- readBackup_ name
+                    ents <- readMeta_ hash
 
                     let paths = splitDirectories dir
                     (rootEnt,children) <- getRootEnt ents paths
@@ -216,30 +225,34 @@ cmdDu opts name (decodeString posix -> dir)
     | absolute dir = error "source path cannot be absolute"
     | otherwise    = getBackupDir opts >>= runBackupRO doDu . defaultBackupConfig
         where doDu = do
-                    hash <- readBackup name
-                    ents <- either error id <$> readMeta hash
+                    hash <- readBackup_ name
+                    ents <- readMeta_ hash
                     undefined
 
 cmdRestore opts name (decodeString posix -> rootDir) (decodeString posix -> dirTo)
     | absolute rootDir = error "source path cannot be absolute"
     | otherwise        = getBackupDir opts >>= runBackupRO doRestore . defaultBackupConfig
   where doRestore = do
-                    hash <- readBackup name
-                    ents <- either error id <$> readMeta hash
+                    hash <- readBackup_ name
+                    ents <- readMeta_ hash
                     restoreDir ents rootDir
-          where restoreDir ents dir = do
+          where -- restore a directory of stuff
+                restoreDir ents dir = do
                     let paths = splitDirectories dir
                     (rootEnt,children) <- getRootEnt ents paths
 
                     forM_ children $ \child -> do
                         case entType child of
                             EntDir -> restoreDir ents (dir </> entName child)
-                            _      -> do
-                                liftIO $ printEnt Pretty child
-                                let h = entHash child
-                                    n = entName child
-                                p <- pathData h
-                                liftIO $ symlink p (dirTo </> n)
+                            _      ->
+                                case entHash child of
+                                    ContentLink _ -> -- skip link
+                                        return ()
+                                    ContentHash h -> do
+                                        liftIO $ printEnt Pretty child
+                                        let n = entName child
+                                        p <- pathData h
+                                        liftIO $ symlink p (dirTo </> n)
                         return ()
 
 allOpts =

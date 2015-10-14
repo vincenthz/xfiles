@@ -4,7 +4,7 @@
 module Tools.ChronoFs.Utils where
 
 import Control.Applicative
-import Control.Monad (when)
+import Control.Monad (when, (>=>))
 import Control.Monad.IO.Class
 import Control.Monad.State (gets, MonadState)
 import qualified Control.Exception as E
@@ -74,6 +74,16 @@ hexHashAsBs (Hash b) = BA.convertToBase BA.Base16 b
 
 hexHash :: Hash -> [Char]
 hexHash = BC.unpack . hexHashAsBs
+
+hashHexAsBs :: B.ByteString -> Either String Hash
+hashHexAsBs =
+    convertBase16 >=> maybe (Left "cannot convert hash") (Right . Hash) . digestFromByteString
+  where
+    convertBase16 :: BC.ByteString -> Either String BC.ByteString
+    convertBase16 = BA.convertFromBase BA.Base16
+
+hashHex :: String -> Either String Hash
+hashHex = hashHexAsBs . BC.pack
 
 getFileMetas :: FilePath -> IO (Either String FileMeta)
 getFileMetas filepath = catchIO ("getFileMetas " ++ show filepath) $ do

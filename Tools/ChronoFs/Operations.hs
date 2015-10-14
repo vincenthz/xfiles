@@ -20,10 +20,9 @@ import Data.String
 import Data.List
 import System.Posix.Files.ByteString hiding (isDirectory)
 
-import Crypto.Hash
+import Crypto.Hash hiding (hash)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
-import qualified Data.ByteString.Base16 as Base16
 
 import Control.Monad.State
 import Control.Monad.Reader
@@ -87,11 +86,20 @@ readMeta :: (Functor f, MonadReader BackupConfig f, MonadIO f)
          => Hash -> f (Either String [Ent])
 readMeta hash = unmarshallEnts <$> (pathMeta hash >>= liftIO . readFile)
 
+readMeta_ :: (Functor f, MonadReader BackupConfig f, MonadIO f)
+          => Hash -> f [Ent]
+readMeta_ hash = either error id <$> readMeta hash
+
 readBackup :: (Functor m, MonadIO m, MonadReader BackupConfig m)
-           => BackupName -> m Hash
+           => BackupName -> m (Either String Hash)
 readBackup name = do
     backupFile <- pathBackup name
-    Hash . fst . Base16.decode . head . BC.lines <$> liftIO (readFile backupFile)
+    content <- liftIO (readFile backupFile)
+    return $ hashHexAsBs (head $ BC.lines content) -- FIXME make it headless
+
+readBackup_ :: (Functor m, MonadIO m, MonadReader BackupConfig m)
+            => BackupName -> m Hash
+readBackup_ name = either error id <$> readBackup name
 
 getBDir :: MonadReader BackupConfig m => m FilePath
 getBDir = asks backupDir
@@ -108,7 +116,10 @@ resolvePath rootHash rootPath = loop rootHash (splitDirectories rootPath)
                 ents <- either error id <$> readMeta hash
                 case find (\e -> entName e == p) ents of
                     Nothing  -> return $ Left ("entity " ++ show p ++ " not found in " ++ show rootPath) 
-                    Just ent -> loop (entHash ent) ps
+                    Just ent ->
+                        case entHash ent of
+                            ContentLink _ -> return $ Left ("entity " ++ show p ++ " is a link")
+                            ContentHash h -> loop h ps
 
 getFileformat :: FilePath -> IO FileFormat
 getFileformat ent = withFile ent ReadMode (\h -> getFileformatFrom <$> B.hGet h 512)
