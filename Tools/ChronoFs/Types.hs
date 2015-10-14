@@ -10,6 +10,8 @@ import Prelude hiding (FilePath)
 import Data.Word
 import Crypto.Hash
 
+type HashT = SHA512
+
 data Stats = Stats
     { statsErrors    :: Int
     , statsDups      :: Int
@@ -44,7 +46,7 @@ data FileMeta = FileMeta
 data EntContent = ContentLink ByteString | ContentHash Hash
     deriving (Show,Eq)
 
-newtype Hash = Hash (Digest SHA512)
+newtype Hash = Hash (Digest HashT)
     deriving (Show,Eq)
 
 instance Default Stats where

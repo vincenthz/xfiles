@@ -105,7 +105,7 @@ getFileMetas filepath = catchIO ("getFileMetas " ++ show filepath) $ do
 
 getFileHash :: FilePath -> IO Hash
 getFileHash f = withFile (encodeString posix f) ReadMode $ \h -> loop h hashInit
-  where loop :: Handle -> Context SHA512 -> IO Hash
+  where loop :: Handle -> Context HashT -> IO Hash
         loop h !c = do
             r <- B.hGet h (16*1024)
             if B.length r == 0

@@ -31,9 +31,12 @@ import Prelude hiding (FilePath, writeFile, readFile)
 
 type BackupName = String
 
+-- | Copy a file to a temporary destination then rename it to be
+-- the Hash(content) in the @dest
 writeAsHash :: FilePath
             -> FilePath
-            -> ((Context SHA512 -> BC.ByteString -> IO (Context SHA512)) -> Context SHA512 -> IO (Context SHA512))
+            -> ((Context HashT -> BC.ByteString -> IO (Context HashT))
+                -> Context HashT -> IO (Context HashT))
             -> IO Hash
 writeAsHash tmpFile destDir f = do
     hash <- withFile tmpFile WriteMode $ \handl -> do
