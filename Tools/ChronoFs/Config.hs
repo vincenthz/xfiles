@@ -10,6 +10,7 @@ defaultBadFileformats =
     , FT_VHDX
     , FT_QEMU_QCOW
     , FT_AR
+    , FT_MACH_O
     , FT_CAML_CMI
     , FT_Haskell_Interface
     , FT_Python_Compiled
