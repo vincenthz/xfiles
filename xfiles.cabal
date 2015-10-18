@@ -26,6 +26,7 @@ Library
                    , Data.FileFormat
                    , Data.Buffer
                    , Data.Sql
+                   , Data.Stream
                    , System.Directory.Traverse
                    , Network.LSP
                    , Storage.HashFS
@@ -71,6 +72,7 @@ Library
                    , Storage.HashFS.Server.Log
                    , Storage.HashFS.ProtocolUtils
                    , Storage.HashFS.ConfigFile
+                   , Data.SQL.Lexer
   Build-depends:     base >= 4.3 && < 5
                    , bytestring
                    , async
