@@ -28,14 +28,14 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 
 import System.Console.GetOpt
-import System.Console.Terminfo
+import Console.Display
 
 import Tools.ChronoFs
 
 cmdBackup opts backupName = do
     bdir <- getBackupDir opts
     home <- getHomeDirectory
-    term <- setupTermFromEnv
+    term <- displayInit
     let cfg = BackupConfig { backupDir = bdir, backupUseHardlinks = True }
         bs  = BackupState
                 { ignoreFormats = defaultBadFileformats

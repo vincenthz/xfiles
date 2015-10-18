@@ -8,7 +8,7 @@ import           Control.Monad (when, (>=>))
 import           Control.Monad.IO.Class
 import           Control.Monad.State (gets, MonadState)
 import qualified Control.Exception as E
-import           System.Console.Terminfo
+import           Console.Display
 import           System.IO (withFile, IOMode(..), Handle)
 import qualified System.Posix.Files.ByteString as RawFiles
 import           Filesystem (getHomeDirectory)
@@ -30,9 +30,8 @@ printTerminalLn color s = printTerminal color (s ++ "\n")
 
 printTerminal :: (MonadState BackupState m, MonadIO m) => Color -> String -> m ()
 printTerminal color s = do
-            term <- gets terminal
-            let mf = getCapability term withForegroundColor 
-            liftIO (runTermOutput term (maybe (termText s) (\f -> f color $ termText s) mf))
+    term <- gets terminal
+    liftIO $ displayTextColor term color s
 
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM cond f = cond >>= \b -> when b f
@@ -54,7 +53,7 @@ getBackupDir opts = do
     return $ maybe userPath id $ foldl (doAcc userPath) Nothing opts
   where doAcc _  _   (ExplicitInstall p) = Just $ decodeString posix p
         doAcc hf _    UserInstall        = Just hf
-        doAcc _  acc _                   = acc
+        --doAcc _  acc _                   = acc
 
 runIO :: IO a -> Backup b -> (a -> Backup b) -> Backup b
 runIO io errCont cont = do

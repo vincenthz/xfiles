@@ -23,7 +23,7 @@ import Control.Monad.Reader
 import Control.Applicative
 import Data.Word
 import Tools.ChronoFs.Types
-import System.Console.Terminfo (Terminal)
+import Console.Display
 import Data.FileFormat
 import Prelude hiding (FilePath)
 
@@ -37,7 +37,7 @@ defaultBackupConfig dir = BackupConfig { backupDir = dir, backupUseHardlinks = T
 
 data BackupState = BackupState
     { ignoreFormats   :: [FileFormat]
-    , terminal        :: Terminal
+    , terminal        :: TerminalDisplay
     , stats           :: Stats
     }
 

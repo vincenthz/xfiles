@@ -2,7 +2,6 @@ module Main where
 
 import           Data.List
 import           Data.FileFormat
-import           System.Directory
 import           System.Directory.Traverse
 import           System.Environment
 
