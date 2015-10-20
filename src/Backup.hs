@@ -195,7 +195,7 @@ getRootEnt es l = doGet es l
                               doGet childEnts xs
 
           getHash e = case entHash e of
-                            ContentLink lnk -> error "got link"
+                            ContentLink lnk -> error ("got link: " ++ show lnk)
                             ContentHash h   -> h
 
 cmdShow opts name Nothing = do
@@ -216,13 +216,13 @@ cmdShow opts name (Just (decodeString posix -> dir))
                     liftIO $ printEnt Pretty rootEnt
                     liftIO $ mapM_ (printEnt Pretty) children
 
-cmdDu opts name (decodeString posix -> dir)
+cmdDu opts _name (decodeString posix -> dir)
     | absolute dir = error "source path cannot be absolute"
     | otherwise    = getBackupDir opts >>= runBackupRO doDu . defaultBackupConfig
         where doDu = do
-                    hash <- readBackup_ name
-                    ents <- readMeta_ hash
-                    undefined
+                    --hash <- readBackup_ name
+                    --ents <- readMeta_ hash
+                    error "du is not implemented"
 
 cmdRestore opts name (decodeString posix -> rootDir) (decodeString posix -> dirTo)
     | absolute rootDir = error "source path cannot be absolute"
@@ -234,7 +234,7 @@ cmdRestore opts name (decodeString posix -> rootDir) (decodeString posix -> dirT
           where -- restore a directory of stuff
                 restoreDir ents dir = do
                     let paths = splitDirectories dir
-                    (rootEnt,children) <- getRootEnt ents paths
+                    (_rootEnt,children) <- getRootEnt ents paths
 
                     forM_ children $ \child -> do
                         case entType child of

@@ -25,10 +25,12 @@ import           Control.Concurrent.MVar
 import           System.Console.Terminfo
 import           System.IO
 
+{-
 data LineWidget =
       Text
     | Progress
     | Done
+-}
 
 data OutputElem =
       Bg Color
@@ -90,8 +92,7 @@ data ProgressState = ProgressState
     , pgCurrent :: Int
     }
 
-type Progress = Double
-
+initProgressState :: Int -> ProgressState
 initProgressState maxItems = ProgressState
     { pgLhs     = ""
     , pgRhs     = ""
@@ -125,14 +126,14 @@ progress tdisp@(TerminalDisplay cf term) numberItems f = do
         displayLn tdisp White msg
 
 showBar :: ProgressBar -> IO ()
-showBar (ProgressBar term backend pgs) = do
-    pgs <- readMVar pgs
+showBar (ProgressBar _ backend pgsVar) = do
+    pgs <- readMVar pgsVar
     let bar = getBar pgs
     backend bar
   where
-    getBar (ProgressState lhs rhs max current) =
+    getBar (ProgressState lhs rhs maxItems current) =
             lhs `sep` bar `sep`
-            (show current ++ "/" ++ show max) `sep`
+            (show current ++ "/" ++ show maxItems) `sep`
             rhs
       where
         sep s1 s2
@@ -141,8 +142,8 @@ showBar (ProgressBar term backend pgs) = do
             | otherwise = s1 ++ " " ++ s2
 
         bar
-            | max == current = "[" ++ replicate szMax fillingChar ++ "]"
-            | otherwise      = "[" ++ replicate filled fillingChar ++ ">" ++ replicate (unfilled-1) ' ' ++ "]"
+            | maxItems == current = "[" ++ replicate szMax fillingChar ++ "]"
+            | otherwise           = "[" ++ replicate filled fillingChar ++ ">" ++ replicate (unfilled-1) ' ' ++ "]"
 
         fillingChar = '='
 
@@ -154,7 +155,7 @@ showBar (ProgressBar term backend pgs) = do
         szMax      = 40
 
         currentProgress :: Double
-        currentProgress = fromIntegral max / fromIntegral current
+        currentProgress = fromIntegral maxItems / fromIntegral current
 
 progressStart :: ProgressBar -> IO ()
 progressStart pbar = do

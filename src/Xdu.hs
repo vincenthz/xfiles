@@ -4,10 +4,9 @@
 module Main where
 
 import           Control.Concurrent
-import           Control.Concurrent.MVar
 import           Control.Monad
 import           Console.Display
-import           Data.List
+import           Console.Options
 import           Data.Char
 import           Data.Maybe (catMaybes)
 import qualified Data.Map as M
@@ -80,7 +79,7 @@ newSt = St
 
 incDirs mv = modifyMVar_ mv $ \st -> return $ st { stDirs = stDirs st + 1 }
 incFiles mv = modifyMVar_ mv $ \st -> return $ st { stFiles = stFiles st + 1 }
-appendSize mv sz = modifyMVar_ mv $ \st -> return $ st { stData = mappend (stData st) sz } 
+appendSize mv sz = modifyMVar_ mv $ \st -> return $ st { stData = mappend (stData st) sz }
 setCurrentDir mv s = modifyMVar_ mv $ \st -> return $ st { stCurrentDir = s }
 
 appendFileStat mv sz fmt = modifyMVar_ mv $ \st -> return $
@@ -93,8 +92,7 @@ printStats summ mv = readMVar mv >>= \st -> do
     either display summarySet summ $ (txt st)
     either display (\_ _ -> return ()) summ $ (showFormat $ stFormats st)
   where
-    txt st = [Fg Red, RightT 5 (show $ stDirs st), NA, T " directories "
-             ,Fg Red, RightT 6 (show $ stFiles st), NA, T " files " 
+    txt st = [Fg Red, LeftT 6 (show $ stFiles st)
              ,Fg Blue, RightT 8 (show $ stData st), NA, T " "
              ,Fg Green, T (show $ stCurrentDir st), NA
              ]
@@ -102,7 +100,7 @@ printStats summ mv = readMVar mv >>= \st -> do
         T "\n >>>>> " : (concatMap render $ zip "IVMTDEO" [a,b,c,d,e,f,g])
       where render (cFormat, sz)
                 | sz == mempty = []
-                | otherwise    = [Fg Red, T [' ',cFormat,':'], Fg Yellow, RightT 6 (show sz)]
+                | otherwise    = [Fg Red, T [' ',cFormat,':'], Fg Yellow, RightT 4 (show $ BytesCondensed sz)]
 
 while f = f >>= \b -> if b then while f else return ()
 
@@ -110,17 +108,26 @@ while f = f >>= \b -> if b then while f else return ()
 --
 main = do
     term <- displayInit
+    defaultMain $ do
+        programName "xdu"
+        programDescription "interactive and detailed disk usage reporting"
+        detailed <- flag 'd' "detailed"
+        --args     <- allArguments
 
-    argDirs <- getArgs
-    let dirs = if null argDirs then ["."] else argDirs
+        action $ \flags -> do
+            when (maybe False id $ flags detailed) $ putStrLn "detailed"
+            argDirs <- getArgs
+            let dirs = if null argDirs then ["."] else argDirs
 
-    sts  <- mapM (showStats term) dirs
+            display term [Fg Red, LeftT 7 "#file "]
+            displayLn term White ""
+            sts  <- mapM (showStats term) dirs
 
-    displayLn term Blue "========================================================="
-    printStats (Left term) =<< newMVar (mconcat $ catMaybes sts)
+            displayLn term Blue "========================================================="
+            printStats (Left term) =<< newMVar (mconcat $ catMaybes sts)
 
-    displayLn term White ""
-    displayLn term White ""
+            displayLn term White ""
+            displayLn term White ""
 
   where
     showStats :: TerminalDisplay -> FilePath -> IO (Maybe St)
@@ -160,7 +167,7 @@ main = do
                 sz <- getFileSize f
                 appendFileStat st sz (filePathToFormat f)
                 return ()
-        
+
         -- create a thread for the traversal while printing every XXX ms
         finished <- newEmptyMVar
         _ <- forkIO $ do

@@ -30,16 +30,16 @@ type DirCallback accumulator = accumulator -> FilePath -> IO (Bool, accumulator)
 
 -- | Traverse directories and files starting from the @rootDir
 dirTraverse :: FilePath
-            -> (a -> FilePath -> IO a)
-            -> (a -> FilePath -> IO (Bool, a))
+            -> FileCallback a
+            -> DirCallback a
             -> a
             -> IO a
-dirTraverse rootDir fFile fDir a = loop a rootDir
+dirTraverse rootDir fFile fDir rootAcc = loop rootAcc rootDir
   where loop a dir = do
             content <- try $ getDir dir
             case content of
-                Left (exn :: SomeException) -> return a
-                Right l  -> foldM (processEnt dir) a l
+                Left (_ :: SomeException) -> return a
+                Right l                   -> foldM (processEnt dir) a l
         processEnt dir a ent = do
             let fp = dir </> ent
             stat <- getSymbolicLinkStatus fp
