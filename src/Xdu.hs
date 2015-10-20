@@ -102,7 +102,7 @@ printStats summ mv = readMVar mv >>= \st -> do
                 | sz == mempty = []
                 | otherwise    = [Fg Red, T [' ',cFormat,':'], Fg Yellow, RightT 4 (show $ BytesCondensed sz)]
 
-while f = f >>= \b -> if b then while f else return ()
+while a f = f a >>= \(b, a') -> if b then while a' f else return ()
 
 -- extensive disk usage
 --
@@ -173,14 +173,14 @@ main = do
         _ <- forkIO $ do
             dirTraverse_ rootDir fileCb dirCb
             putMVar finished ()
-        while $ do
+        while 20000 $ \delay -> do
             isFinished <- not <$> isEmptyMVar finished
             if isFinished
-                then return False
+                then return (False, delay)
                 else do
                     printStats (Right summ) st
-                    threadDelay 200000
-                    return True
+                    threadDelay delay
+                    return (True, min (delay + 20000) 200000)
         setCurrentDir st rootDir
         printStats (Left term) st
         displayLn term Red ""
