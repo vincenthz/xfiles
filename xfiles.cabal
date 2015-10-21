@@ -24,6 +24,7 @@ Library
                    , Data.FileFormat
                    , System.Directory.Traverse
                    , Console.Display
+                   , Console.Options
   Other-modules:     Tools.ChronoFs.Marshall
                    , Tools.ChronoFs.Types
                    , Tools.ChronoFs.Monad
@@ -31,6 +32,11 @@ Library
                    , Tools.ChronoFs.Config
                    , Tools.ChronoFs.Utils
                    , Tools.ChronoFs.Display
+                   , Console.Options.Nid
+                   , Console.Options.Flags
+                   , Console.Options.Monad
+                   , Console.Options.Types
+                   , Console.Options.Utils
   Build-depends:     base >= 4.3 && < 5
                    , bytestring
                    , memory >= 0.8
