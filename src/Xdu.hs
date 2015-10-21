@@ -57,7 +57,8 @@ newtype FormatSize = FormatSize (Bytes, Bytes, Bytes, Bytes, Bytes, Bytes, Bytes
 instance Monoid FormatSize where
     mempty = FormatSize (mempty,mempty,mempty,mempty,mempty,mempty,mempty)
     mappend (FormatSize (a1,b1,c1,d1,e1,f1,g1))
-            (FormatSize (a2,b2,c2,d2,e2,f2,g2)) = FormatSize (a1`mappend`a2,b1`mappend`b2,c1`mappend`c2,d1`mappend`d2,e1`mappend`e2,f1`mappend`f2, g1`mappend`g2)
+            (FormatSize (a2,b2,c2,d2,e2,f2,g2)) =
+        FormatSize (a1`mappend`a2,b1`mappend`b2,c1`mappend`c2,d1`mappend`d2,e1`mappend`e2,f1`mappend`f2, g1`mappend`g2)
 
 toFormatSize :: Format -> Bytes -> FormatSize
 toFormatSize Image sz     = FormatSize (sz,mempty,mempty,mempty,mempty,mempty,mempty)
@@ -67,6 +68,9 @@ toFormatSize Text sz      = FormatSize (mempty,mempty,mempty,sz,mempty,mempty,me
 toFormatSize Document sz  = FormatSize (mempty,mempty,mempty,mempty,sz,mempty,mempty)
 toFormatSize ExeLibObj sz = FormatSize (mempty,mempty,mempty,mempty,mempty,sz,mempty)
 toFormatSize Other sz     = FormatSize (mempty,mempty,mempty,mempty,mempty,mempty,sz)
+
+onlyOneFormat :: FormatSize -> Bool
+onlyOneFormat (FormatSize (a,b,c,d,e,f,g)) = length (filter (/= mempty) [a,b,c,d,e,f,g]) <= 1
 
 newSt :: St
 newSt = St
@@ -88,71 +92,63 @@ appendFileStat mv sz fmt = modifyMVar_ mv $ \st -> return $
        , stFormats = toFormatSize fmt sz `mappend` stFormats st
        }
 
-printStats summ mv = readMVar mv >>= \st -> do
+printStats detailed summ mv = readMVar mv >>= \st -> do
     either display summarySet summ $ (txt st)
-    either display (\_ _ -> return ()) summ $ (showFormat $ stFormats st)
   where
-    txt st = [Fg Red, LeftT 6 (show $ stFiles st)
-             ,Fg Blue, RightT 8 (show $ stData st), NA, T " "
-             ,Fg Green, T (show $ stCurrentDir st), NA
+    txt st = [Fg Red, LeftT 6 (show $ stFiles st), T " "
+             ,Fg Blue, RightT 8 (show $ stData st), T " "
              ]
-    showFormat (FormatSize (a,b,c,d,e,f,g)) =
-        T "\n >>>>> " : (concatMap render $ zip "IVMTDEO" [a,b,c,d,e,f,g])
-      where render (cFormat, sz)
-                | sz == mempty = []
-                | otherwise    = [Fg Red, T [' ',cFormat,':'], Fg Yellow, RightT 4 (show $ BytesCondensed sz)]
+             ++ [Fg Green, T (stCurrentDir st), T " "]
+             ++ formatDisplay (showFormat $ stFormats st)
+             ++ [NA]
+      where
+        formatDisplay :: [a] -> [a]
+        formatDisplay = either (const id) (const (const [])) summ
+                      . if not detailed || onlyOneFormat (stFormats st) then const [] else id
+
+        showFormat :: FormatSize -> [OutputElem]
+        showFormat (FormatSize (a,b,c,d,e,f,g)) =
+            (concatMap render $ zip "IVMTDEO" [a,b,c,d,e,f,g])
+          where render (cFormat, sz)
+                    | sz == mempty = []
+                    | otherwise    = [Fg Red, T [cFormat,':'], Fg Cyan, RightT 4 (show $ BytesCondensed sz), T " "]
 
 while a f = f a >>= \(b, a') -> if b then while a' f else return ()
 
--- extensive disk usage
---
-main = do
-    term <- displayInit
-    defaultMain $ do
-        programName "xdu"
-        programDescription "interactive and detailed disk usage reporting"
-        detailed <- flag 'd' "detailed"
-        --args     <- allArguments
+xdu term detailed dirs = do
+    display term [Fg Red, LeftT 6 "#file ", T " ", RightT 8 "size", NA]
+    displayLn term White ""
+    sts <- mapM showStats dirs
 
-        action $ \flags -> do
-            when (maybe False id $ flags detailed) $ putStrLn "detailed"
-            argDirs <- getArgs
-            let dirs = if null argDirs then ["."] else argDirs
+    displayLn term Blue "========================================================="
+    printStats detailed (Left term) =<< newMVar (mconcat $ catMaybes sts)
 
-            display term [Fg Red, LeftT 7 "#file "]
-            displayLn term White ""
-            sts  <- mapM (showStats term) dirs
-
-            displayLn term Blue "========================================================="
-            printStats (Left term) =<< newMVar (mconcat $ catMaybes sts)
-
-            displayLn term White ""
-            displayLn term White ""
-
+    displayLn term White ""
+    displayLn term White ""
   where
-    showStats :: TerminalDisplay -> FilePath -> IO (Maybe St)
-    showStats term path = do
+    showStats :: FilePath -> IO (Maybe St)
+    showStats path = do
         isDir  <- doesDirectoryExist path
         isFile <- doesFileExist path
-        if | isDir     -> showDirStats term path
-           | isFile    -> showFileStats term path
-           | otherwise -> showError term path
+        if | isDir     -> showDirStats path
+           | isFile    -> showFileStats path
+           | otherwise -> showError path
 
-    showFileStats term path = do
+    showFileStats path = do
         st <- newMVar mempty
         sz <- getFileSize path
         appendFileStat st sz (filePathToFormat path)
         setCurrentDir st path
-        printStats (Left term) st
+        printStats detailed (Left term) st
         displayLn term Red ""
         Just <$> readMVar st
 
-    showError term path = do
+    showError path = do
         displayLn term Red ("error: " ++ path ++ " : doesn't exist")
         return Nothing
 
-    showDirStats :: TerminalDisplay -> FilePath -> IO (Maybe St)
-    showDirStats term rootDir = do
+    showDirStats :: FilePath -> IO (Maybe St)
+    showDirStats rootDir = do
         st   <- newMVar mempty
         summ <- summary term
         setCurrentDir st rootDir
@@ -178,11 +174,11 @@ main = do
             if isFinished
                 then return (False, delay)
                 else do
-                    printStats (Right summ) st
+                    printStats detailed (Right summ) st
                     threadDelay delay
                     return (True, min (delay + 20000) 200000)
         setCurrentDir st rootDir
-        printStats (Left term) st
+        printStats detailed (Left term) st
         displayLn term Red ""
         Just <$> readMVar st
 
@@ -194,3 +190,17 @@ main = do
                 | otherwise = diff as bs -- weird case. not sure what to do.
             diff l []  = l
             diff [] l  = l
+
+-- extensive disk usage
+main = do
+    term <- displayInit
+    defaultMain $ do
+        programName "xdu"
+        programDescription "interactive and detailed disk usage reporting"
+        detailedFlag <- flag 'd' "detailed"
+        allArgs      <- remainingArguments "FILE"
+        action $ \flags args ->
+            xdu term
+                (maybe False id $ flags detailedFlag)
+                (if null (args allArgs) then ["."] else args allArgs)
+
