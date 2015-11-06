@@ -25,6 +25,7 @@ Library
                    , System.Directory.Traverse
                    , Console.Display
                    , Console.Options
+                   , Network.LSP
   Other-modules:     Tools.ChronoFs.Marshall
                    , Tools.ChronoFs.Types
                    , Tools.ChronoFs.Monad
@@ -37,10 +38,19 @@ Library
                    , Console.Options.Monad
                    , Console.Options.Types
                    , Console.Options.Utils
+                   , Network.LSP.Types
+                   , Network.LSP.Crypto
+                   , Network.LSP.Context
+                   , Network.LSP.Exception
+                   , Network.LSP.Record
+                   , Network.LSP.Wire
+                   , Network.LSP.Context
+                   , Network.LSP.IO
   Build-depends:     base >= 4.3 && < 5
                    , bytestring
                    , memory >= 0.8
-                   , cryptonite
+                   , network
+                   , cryptonite >= 0.9
                    , mtl
                    , system-filepath
                    , system-fileio
@@ -143,3 +153,19 @@ Executable           xdu
                    , process
   Buildable:         True
   default-language:  Haskell2010
+
+Test-Suite test-lsp
+  type:              exitcode-stdio-1.0
+  hs-source-dirs:    tests
+  Main-is:           Tests.hs
+  default-language:  Haskell2010
+  Build-Depends:     base >= 3 && < 5
+                   , mtl
+                   , network
+                   , tasty
+                   , tasty-quickcheck
+                   , QuickCheck
+                   , cryptonite
+                   , bytestring
+                   , xfiles
+  ghc-options:       -Wall -fno-warn-orphans -fno-warn-missing-signatures -fwarn-tabs -fno-warn-unused-imports
