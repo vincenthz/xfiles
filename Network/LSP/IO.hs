@@ -38,7 +38,7 @@ recvDataHeader socket = do
     b <- recvExact socket 4
     case B.unpack b of
         [_,_,c,d] -> do
-            let recordLength = (fromIntegral (c `shiftL` 8) .|. fromIntegral d)
+            let recordLength = ((fromIntegral c) `shiftL` 8) .|. fromIntegral d
             return (b, recordLength)
         _ -> error "invalid recvHdr wrong size"
 
