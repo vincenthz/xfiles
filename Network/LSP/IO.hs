@@ -18,9 +18,6 @@ import           Network.LSP.Crypto
 import           Network.LSP.Exception
 import           Network.LSP.Record
 
-import           Network.Socket (Socket)
-import qualified Network.Socket.ByteString as N
-
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 
