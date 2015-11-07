@@ -161,6 +161,7 @@ Test-Suite test-lsp
   default-language:  Haskell2010
   Build-Depends:     base >= 3 && < 5
                    , mtl
+                   , async
                    , network
                    , tasty
                    , tasty-quickcheck
