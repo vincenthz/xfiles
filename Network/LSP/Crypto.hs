@@ -4,7 +4,9 @@ module Network.LSP.Crypto
     , NodeSignature
     , SessionPublicKey
     , SessionSecretKey
+    , SessionSharedKey
     , SymmetricKey
+    , Curve25519.DhSecret
     , MasterSecret
     -- * Parsers
     , parseNodePublicKey

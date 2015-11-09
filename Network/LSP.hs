@@ -104,6 +104,8 @@ recv lsp = do
             key    = keyRx $ lspState lsp
         return (decrypt key seqIv (hdr `B.append` seqHdr) dat)
 
+newHello :: (NodeSecretKey, NodePublicKey)
+         -> IO (SessionPublicKey -> SessionSharedKey, Local Hello)
 newHello nodeKey = do
     let version = Version 1
     (ran, dh, pub) <- generateNewSession
@@ -130,6 +132,11 @@ checkWhiteList :: WhiteList -> NodePublicKey -> IO ()
 checkWhiteList whitelist pub =
     unless (pub `elem` whitelist) $ E.throwIO $ UnknownNode pub
 
+computeState :: Side
+             -> (SessionPublicKey -> DhSecret)
+             -> Local Hello
+             -> Remote Hello
+             -> IO State
 computeState side dh (Local localHello) (Remote remoteHello) = do
     case helloGetData remoteHello of
         HelloDataV1 remotePub _ _ -> do
