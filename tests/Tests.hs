@@ -8,10 +8,10 @@ import           Test.QuickCheck.Monadic
 import           Data.Maybe
 
 import qualified Data.ByteString as B
+import qualified Data.ByteArray as B (convert)
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.Lazy as L
 import           Network.LSP
-import           Network.Socket hiding (send, recv)
 import           Control.Applicative
 import           Control.Concurrent
 import           Control.Monad
@@ -29,96 +29,99 @@ import           Control.Concurrent.Async
 
 import           FakeHandle
 
+instance Show Ed25519.SecretKey where
+    show key = show (B.convert key :: B.ByteString)
+
+arbitraryEd25519Key :: Gen Ed25519.SecretKey
+arbitraryEd25519Key = throwCryptoError . Ed25519.secretKey . B.pack <$> replicateM 32 arbitrary
+
+arbitraryChunks :: (Int, Int) -> (Int, Int) -> Gen [B.ByteString]
+arbitraryChunks nbChunks szChunks = do
+    nb <- choose nbChunks
+    let arbitraryBs = do
+            len <- choose szChunks
+            B.pack <$> replicateM len arbitrary
+    replicateM nb arbitraryBs
+
+runClientServer runClient runServer = run $ do
+    clientBackend <- newFakeHandle
+    serverBackend <- newFakeHandle
+
+    pipeFakeHandle clientBackend serverBackend
+    concurrently (runClient clientBackend) (runServer serverBackend)
+
+prepareWorkingConfig :: Ed25519.SecretKey -> Ed25519.SecretKey -> (Config, Config)
+prepareWorkingConfig clientPriv serverPriv =
+    ( Config (clientPriv, clientPub) [serverPub]
+    , Config (serverPriv, serverPub) [clientPub]
+    )
+  where
+    clientPub = Ed25519.toPublic clientPriv
+    serverPub = Ed25519.toPublic serverPriv
+
+propHandshake :: PropertyM IO ()
+propHandshake = do
+    (clientPriv, serverPriv) <- pick ((,) <$> arbitraryEd25519Key
+                                          <*> arbitraryEd25519Key)
+    let (clientCfg, serverCfg) = prepareWorkingConfig clientPriv serverPriv
+
+    let runClient backend = do
+            _ <- client backend clientCfg
+            return ()
+        runServer backend = do
+            _ <- server backend serverCfg
+            return ()
+    ((),()) <- runClientServer runClient runServer
+    return ()
+
 propSendData :: PropertyM IO ()
 propSendData = do
-    clientPriv <- run (throwCryptoError . Ed25519.secretKey . witness <$> getRandomBytes 32)
-    serverPriv <- run (throwCryptoError . Ed25519.secretKey . witness <$> getRandomBytes 32)
+    (inp, clientPriv, serverPriv) <- pick ((,,) <$> arbitraryChunks (1,6) (1,2000)
+                                                <*> arbitraryEd25519Key
+                                                <*> arbitraryEd25519Key)
+    let (clientCfg, serverCfg) = prepareWorkingConfig clientPriv serverPriv
 
-    let clientPub = Ed25519.toPublic clientPriv
-        serverPub = Ed25519.toPublic serverPriv
-
-    let clientCfg = Config (clientPriv, clientPub) [serverPub]
-        serverCfg = Config (serverPriv, serverPub) [clientPub]
-
-    inp <- pick $ do
-                nbChunks <- choose (1,6)
-                let arbitraryBs = do
-                        len <- choose (1,2000)
-                        B.pack <$> replicateM len arbitrary
-                replicateM nbChunks arbitraryBs
-
-    run $ do
-        clientBackend <- newFakeHandle
-        serverBackend <- newFakeHandle
-
-        pipeFakeHandle clientBackend serverBackend
-
-        let runClient = do
-                clientLSP <- client clientBackend clientCfg
-                mapM_ (send clientLSP) inp
-                return True
-            runServer = do
-                serverLSP <- server serverBackend serverCfg
-                r' <- replicateM (length inp) $ recv serverLSP
-                return r'
-
-        (_, r') <- concurrently runClient runServer
-
-        assertEq inp r'
-  where
-    witness :: B.ByteString -> B.ByteString
-    witness = id
+    let runClient backend = do
+            lsp <- client backend clientCfg
+            mapM_ (send lsp) inp
+            return True
+        runServer backend = do
+            lsp <- server backend serverCfg
+            r' <- replicateM (length inp) $ recv lsp
+            return r'
+    (_,r') <- runClientServer runClient runServer
+    assertEq inp r'
 
 propRecvData :: PropertyM IO ()
 propRecvData = do
-    clientPriv <- run (throwCryptoError . Ed25519.secretKey . witness <$> getRandomBytes 32)
-    serverPriv <- run (throwCryptoError . Ed25519.secretKey . witness <$> getRandomBytes 32)
+    (inp, clientPriv, serverPriv) <- pick ((,,) <$> arbitraryChunks (1,6) (1,2000)
+                                                <*> arbitraryEd25519Key
+                                                <*> arbitraryEd25519Key)
 
-    let clientPub = Ed25519.toPublic clientPriv
-        serverPub = Ed25519.toPublic serverPriv
+    let (clientCfg, serverCfg) = prepareWorkingConfig clientPriv serverPriv
 
-    let clientCfg = Config (clientPriv, clientPub) [serverPub]
-        serverCfg = Config (serverPriv, serverPub) [clientPub]
+    let runClient backend = do
+            lsp <- client backend clientCfg
+            r' <- replicateM (length inp) $ recv lsp
+            return r'
+        runServer backend = do
+            lsp <- server backend serverCfg
+            mapM_ (send lsp) inp
+            return True
 
-    inp <- pick $ do
-                nbChunks <- choose (1,6)
-                let arbitraryBs = do
-                        len <- choose (1,2000)
-                        B.pack <$> replicateM len arbitrary
-                replicateM nbChunks arbitraryBs
-
-    run $ do
-        clientBackend <- newFakeHandle
-        serverBackend <- newFakeHandle
-
-        pipeFakeHandle clientBackend serverBackend
-
-        let runClient = do
-                lsp <- client clientBackend clientCfg
-                r' <- replicateM (length inp) $ recv lsp
-                return r'
-            runServer = do
-                lsp <- server serverBackend serverCfg
-                mapM_ (send lsp) inp
-                return True
-
-        (_, r') <- concurrently runServer runClient
-
-        assertEq inp r'
-  where
-    witness :: B.ByteString -> B.ByteString
-    witness = id
+    (r',_) <- runClientServer runClient runServer
+    assertEq inp r'
 
 assertEq :: (Show a, Monad m, Eq a) => a -> a -> m ()
 assertEq expected got = unless (expected == got) $ error ("got " ++ show got ++ " but was expecting " ++ show expected)
 
 main :: IO ()
 main = defaultMain $ testGroup "lsp"
-    [ tests_handshake
+    [ testGroup "handshake"
+        [ testProperty "handshake" (monadicIO propHandshake)
+        ]
+    , testGroup "data"
+        [ testProperty "send data" (monadicIO propSendData)
+        , testProperty "recv data" (monadicIO propRecvData)
+        ]
     ]
-  where
-        -- high level tests between a client and server with fake ciphers.
-        tests_handshake = testGroup "Handshakes"
-            [ testProperty "send data" (monadicIO propSendData)
-            , testProperty "recv data" (monadicIO propRecvData)
-            ]

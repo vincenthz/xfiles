@@ -48,6 +48,7 @@ Library
                    , Network.LSP.IO
   Build-depends:     base >= 4.3 && < 5
                    , bytestring
+                   , async
                    , memory >= 0.8
                    , network
                    , cryptonite >= 0.9
@@ -162,7 +163,7 @@ Test-Suite test-lsp
   Build-Depends:     base >= 3 && < 5
                    , mtl
                    , async
-                   , network
+                   , memory
                    , tasty
                    , tasty-quickcheck
                    , QuickCheck

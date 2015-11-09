@@ -86,9 +86,9 @@ generateNewSession = do
            )
 
 generateMaster :: SessionRandom -> SessionRandom -> Curve25519.DhSecret -> MasterSecret
-generateMaster _ _ shared =
-    -- TODO : mix client random and server random in shared
-    let masterSecret = prf (BC.pack "master secret") (convert shared) 128
+generateMaster (SessionRandom r1) (SessionRandom r2) shared =
+    let seed         = B.concat [BC.pack "master secret", r1, r2]
+        masterSecret = prf seed (convert shared) 128
      in MasterSecret masterSecret
 
 generateCryptoState :: MasterSecret -> (ByteString, ByteString, ByteString, ByteString)

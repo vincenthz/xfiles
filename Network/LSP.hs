@@ -12,6 +12,7 @@ module Network.LSP
 import           Control.Applicative
 import           Control.Monad
 import           Control.Concurrent.MVar
+import           Control.Concurrent.Async
 import qualified Control.Exception as E
 
 import           Data.ByteString (ByteString)
@@ -58,8 +59,9 @@ server :: Backend backend
 server backend cfg = do
     remoteHello      <- recvHello (allowed cfg) backend
     (dh, localHello) <- newHello (private cfg)
-    st               <- computeState Server dh localHello remoteHello
-    sendHello backend localHello
+    (st, ()) <- concurrently
+                    (computeState Server dh localHello remoteHello)
+                    (sendHello backend localHello)
     return $ LSP { lspSocket = B backend
                  , lspConfig = cfg
                  , lspState  = st
