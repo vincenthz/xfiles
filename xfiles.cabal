@@ -86,7 +86,6 @@ Executable           chronofs
                    , system-fileio
                    , data-default-class
                    , hashable
-                   , base16-bytestring
                    , hashtables
                    , bytestring
                    , filepath
