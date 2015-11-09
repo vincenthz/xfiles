@@ -26,6 +26,7 @@ Library
                    , Console.Display
                    , Console.Options
                    , Network.LSP
+                   , Storage.HashFS
   Other-modules:     Tools.ChronoFs.Marshall
                    , Tools.ChronoFs.Types
                    , Tools.ChronoFs.Monad
@@ -46,6 +47,10 @@ Library
                    , Network.LSP.Wire
                    , Network.LSP.Context
                    , Network.LSP.IO
+                   , Storage.HashFS.Types
+                   , Storage.HashFS.Monad
+                   , Storage.HashFS.Path
+                   , Storage.HashFS.Utils
   Build-depends:     base >= 4.3 && < 5
                    , bytestring
                    , async
