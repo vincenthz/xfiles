@@ -8,9 +8,11 @@ module Tools.Quarry.DB.Types
     , tableData
     , tableTag
     , tableCategory
+    , tableGroup
     , KeyData(..)
     , KeyTag(..)
     , KeyCategory(..)
+    , KeyGroup(..)
     ) where
 
 import Data.Convertible
@@ -20,10 +22,11 @@ import Database.HDBC
 newtype Table = Table { tableName :: String }
     deriving (Show,Eq)
 
-tableData, tableTag, tableCategory :: Table
+tableData, tableTag, tableCategory, tableGroup :: Table
 tableData     = Table "data"
 tableTag      = Table "tag"
 tableCategory = Table "category"
+tableGroup    = Table "group"
 
 -- | belong to a table
 class HasTable a where
@@ -43,6 +46,8 @@ newtype KeyTag      = KeyTag Integer
     deriving (Show,Eq,Ord,Data,Typeable)
 newtype KeyCategory = KeyCategory Integer
     deriving (Show,Eq,Ord,Data,Typeable)
+newtype KeyGroup = KeyGroup Integer
+    deriving (Show,Eq,Ord,Data,Typeable)
 
 instance HasTable KeyData where
     getTable _ = tableData
@@ -50,12 +55,16 @@ instance HasTable KeyTag where
     getTable _ = tableTag
 instance HasTable KeyCategory where
     getTable _ = tableCategory
+instance HasTable KeyGroup where
+    getTable _ = tableGroup
 instance PrimaryKey KeyData where
     getPrimaryKey (KeyData k) = k
 instance PrimaryKey KeyTag where
     getPrimaryKey (KeyTag k) = k
 instance PrimaryKey KeyCategory where
     getPrimaryKey (KeyCategory k) = k
+instance PrimaryKey KeyGroup where
+    getPrimaryKey (KeyGroup k) = k
 instance Convertible SqlValue KeyData where
     safeConvert (SqlInteger i) = return $ KeyData i
     safeConvert y              = convError "incompatible types" y

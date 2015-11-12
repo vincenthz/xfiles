@@ -12,4 +12,5 @@ newtype QuarryM a = QuarryM { runQuarryM :: ReaderT QuarryConfig IO a }
     deriving (Functor, Applicative, Monad, MonadReader QuarryConfig, MonadIO)
 
 runQuarry :: QuarryConfig -> QuarryM a -> IO a
-runQuarry conf f = runReaderT (runQuarryM f) conf
+runQuarry conf f =
+    runReaderT (runQuarryM f) conf

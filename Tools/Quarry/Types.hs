@@ -9,6 +9,9 @@ type Category = String
 data Tag = Tag { tagName :: TagName, tagCat :: Category }
     deriving (Eq)
 
+data Group = Group { groupDescription :: String }
+    deriving (Eq)
+
 instance Show Tag where
     show tag = tagCat tag ++ ":" ++ tagName tag
 
