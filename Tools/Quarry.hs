@@ -145,6 +145,7 @@ getQuarryDigestInfo digest =
 getQuarryFileType :: FilePath -> QuarryM QuarryFileType
 getQuarryFileType path = liftIO (toQuarryFileType <$> getFileformat path)
 
+toQuarryFileType :: FileFormat -> QuarryFileType
 toQuarryFileType ft = case ft of
     FT_JPEG   -> QuarryTypeImage
     FT_JPEG_EXIF -> QuarryTypeImage
