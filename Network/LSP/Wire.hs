@@ -63,7 +63,3 @@ putSequenceNumber seqNum = either error id $ C.fill 8 $
 
 helloSize :: Int
 helloSize = 32 + 2 + 32 + 32 + 64
---putPacket :: RecordRaw -> ByteString
---putPacket = undefined
-
---getPacket :: 
