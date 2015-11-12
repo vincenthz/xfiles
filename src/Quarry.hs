@@ -92,11 +92,11 @@ cmdImport args = do
         [path,file] -> doImport optArgs path file
         _           -> usage' options Import ("expecting 2 arguments got: " ++ show nonOpts)
   where options =
-            [ Option ['h'] ["help"] (NoArg ImportHelp) "show help"
-            , Option ['s'] ["symlink"] (NoArg (ImportTy ImportSymlink)) "use a symlink to import into the hashfs"
-            , Option [] ["hardlink"] (NoArg (ImportTy ImportHardlink)) "use a hardlink to import into the hashfs"
-            , Option ['d'] ["date"] (ReqArg ImportDate "date") "add a date in posix seconds"
-            , Option ['t'] ["tag"] (ReqArg ImportTag "tag") "add a tag"
+            [ Option ['h'] ["help"]     (NoArg ImportHelp) "show help"
+            , Option ['s'] ["symlink"]  (NoArg (ImportTy ImportSymlink)) "use a symlink to import into the hashfs"
+            , Option []    ["hardlink"] (NoArg (ImportTy ImportHardlink)) "use a hardlink to import into the hashfs"
+            , Option ['d'] ["date"]     (ReqArg ImportDate "date") "add a date in posix seconds"
+            , Option ['t'] ["tag"]      (ReqArg ImportTag "tag") "add a tag"
             , Option ['f'] ["filename"] (ReqArg ImportFilename "filename") "override the filename"
             ]
         hardcodedDataCat = CategoryPersonal
