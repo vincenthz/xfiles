@@ -21,6 +21,7 @@ source-repository head
 Library
   Exposed-Modules:   Tools.ChronoFs
                    , Tools.Quarry
+                   , Tools.Config
                    , Tools.Utils
                    , Data.FileFormat
                    , System.Directory.Traverse
