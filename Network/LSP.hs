@@ -6,6 +6,7 @@ module Network.LSP
     , client
     , server
     , send
+    , recvPacket
     , recv
     ) where
 
@@ -46,9 +47,11 @@ client backend cfg = do
     sendHello backend localHello
     remoteHello <- recvHello (allowed cfg) backend
     st          <- computeState Client dh localHello remoteHello
+    rbuf        <- newRBuf
     return $ LSP { lspSocket = B backend
                  , lspConfig = cfg
                  , lspState  = st
+                 , lspRBuf   = rbuf
                  }
 
 -- | Create a new server LSP connection
@@ -59,12 +62,14 @@ server :: Backend backend
 server backend cfg = do
     remoteHello      <- recvHello (allowed cfg) backend
     (dh, localHello) <- newHello (private cfg)
-    (st, ()) <- concurrently
-                    (computeState Server dh localHello remoteHello)
-                    (sendHello backend localHello)
+    (st, ())         <- concurrently
+                            (computeState Server dh localHello remoteHello)
+                            (sendHello backend localHello)
+    rbuf             <- newRBuf
     return $ LSP { lspSocket = B backend
                  , lspConfig = cfg
                  , lspState  = st
+                 , lspRBuf   = rbuf
                  }
 
 -- | Send data through a LSP connection
@@ -90,12 +95,18 @@ send lsp inp
         c   = fromIntegral (len `div` 256)
 
 -- | Receive data through a LSP connection
-recv :: LSP -> IO ByteString
-recv lsp = do
+--
+-- Receive the header data from the backend,
+-- and then get the payload, which is decrypted
+--
+-- Empty bytestring are valid packet, and do not
+-- indicate end of input (can be used for keepalive for example)
+recvPacket :: LSP -> IO ByteString
+recvPacket lsp = do
     (hdr, datLen) <- withBackend lsp recvDataHeader
     when (datLen < metaDataSize) $ E.throwIO RecvBadRecord
-    dat           <- withBackend lsp $ \b -> backendRecv b (datLen `mod` maxRecordSize)
-    plaintext     <- doDecrypt hdr dat
+    payload       <- withBackend lsp $ \b -> backendRecv b (datLen `mod` maxRecordSize)
+    plaintext     <- doDecrypt hdr payload
     maybe (E.throwIO RecvBadRecord) return plaintext
   where
     doDecrypt hdr dat = do
@@ -103,6 +114,28 @@ recv lsp = do
         let seqHdr = putSequenceNumber seqNum
             key    = keyRx $ lspState lsp
         return (decrypt key seqIv (hdr `B.append` seqHdr) dat)
+
+recv :: LSP -> Int -> IO ByteString
+recv lsp nbBytes = do
+    -- check if we have enough already from the buffer
+    ini <- modifyRBuf (\buf -> let (b1, b2) = B.splitAt nbBytes buf in return (b2, b1))
+    if B.length ini == nbBytes
+        then return ini
+        else -- need to peek into new packets from the backend
+            B.concat . ((:) ini) <$> loop (nbBytes - B.length ini)
+  where
+    modifyRBuf f = modifyMVar (lspRBuf lsp) f
+    loop n
+        | n == 0    = return []
+        | otherwise = do
+            p <- recvPacket lsp
+            case compare (B.length p) n of
+                EQ -> return [p]
+                LT -> ((:) p) <$> loop (n - B.length p)
+                GT -> do
+                    let (b1,b2) = B.splitAt n p
+                    modifyRBuf (\buf -> return (buf `B.append` b2, ()))
+                    return [b1]
 
 newHello :: (NodeSecretKey, NodePublicKey)
          -> IO (SessionPublicKey -> SessionSharedKey, Local Hello)

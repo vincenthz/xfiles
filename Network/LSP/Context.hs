@@ -7,6 +7,7 @@ module Network.LSP.Context
     , B(..)
     , LSP(..)
     , WhiteList
+    , newRBuf
     , State(..)
     , Sequence
     , newSequence
@@ -50,6 +51,9 @@ newtype SequenceNumber = SequenceNumber Word64
 newSequence :: ByteString -> IO (MVar Sequence)
 newSequence !iv = newMVar $! Sequence { seqNum = SequenceNumber 1, seqIv = iv }
 
+newRBuf :: IO (MVar ByteString)
+newRBuf = newMVar B.empty
+
 incrementBs :: ByteString -> ByteString
 incrementBs n = B.copyAndFreeze n $ \s ->
     loop s $ s `plusPtr` ((B.length n) - 1)
@@ -67,6 +71,7 @@ data LSP = LSP
     { lspSocket :: B
     , lspConfig :: Config
     , lspState  :: State
+    , lspRBuf   :: MVar ByteString
     }
 
 data B = forall b . Backend b => B b

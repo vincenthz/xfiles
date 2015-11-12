@@ -87,7 +87,7 @@ propSendData = do
             return True
         runServer backend = do
             lsp <- server backend serverCfg
-            r' <- replicateM (length inp) $ recv lsp
+            r' <- replicateM (length inp) $ recvPacket lsp
             return r'
     (_,r') <- runClientServer runClient runServer
     assertEq inp r'
@@ -102,7 +102,7 @@ propRecvData = do
 
     let runClient backend = do
             lsp <- client backend clientCfg
-            r' <- replicateM (length inp) $ recv lsp
+            r' <- replicateM (length inp) $ recvPacket lsp
             return r'
         runServer backend = do
             lsp <- server backend serverCfg
