@@ -4,6 +4,7 @@ module Storage.HashFS
     , HashFS
     , HashFSConf(..)
     , makeConf
+    , makeConfSHA256
     , makeConfSHA512
     , OutputDesc(..)
     , outputDigest
@@ -60,6 +61,10 @@ makeConf depth initCtx oDesc rootFs =
 -- | Create a configuration with SHA256 as the Hash
 makeConfSHA512 :: [Int] -> OutputDesc -> FilePath -> HashFSConf SHA512
 makeConfSHA512 depth = makeConf depth hashInit
+
+-- | Create a configuration with SHA256 as the Hash
+makeConfSHA256 :: [Int] -> OutputDesc -> FilePath -> HashFSConf SHA256
+makeConfSHA256 depth = makeConf depth hashInit
 
 -- | Compute the digest according to the HashFSConof of any file
 computeHash :: HashAlgorithm h => FilePath -> HashFS h (Digest h)
