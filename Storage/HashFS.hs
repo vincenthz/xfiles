@@ -179,18 +179,19 @@ iterateFiles :: HashAlgorithm h => (Digest h -> IO ()) -> HashFS h ()
 iterateFiles callback =
     ask >>= \conf ->
     loop (maybe (return ()) callback . inputd conf) (hashfsDepth conf) (fullLength conf) "" (hashfsRoot conf)
-  where loop :: HashAlgorithm h => (String -> IO ()) -> [Int] -> Int -> String -> FilePath -> HashFS h ()
-        loop f (n:ns) i pre dir = do
-            ents <- liftIO $ getDirectoryContents dir
-            let validEnts = filter ((== n) . length) ents
-            validEntsDir <- filterM (liftIO . doesDirectoryExist . (dir </>)) validEnts
-            mapM_ (\p -> loop f ns i (pre ++ p) (dir </> p)) validEntsDir
-        loop f []     _ pre dir = do
-            ents <- liftIO $ getDirectoryContents dir
-            forM_ ents $ \r -> liftIO $ f (pre ++ r)
+  where
+    loop :: HashAlgorithm h => (String -> IO ()) -> [Int] -> Int -> String -> FilePath -> HashFS h ()
+    loop f (n:ns) i pre dir = do
+        ents <- liftIO $ getDirectoryContents dir
+        let validEnts = filter ((== n) . length) ents
+        validEntsDir <- filterM (liftIO . doesDirectoryExist . (dir </>)) validEnts
+        mapM_ (\p -> loop f ns i (pre ++ p) (dir </> p)) validEntsDir
+    loop f []     _ pre dir = do
+        ents <- liftIO $ getDirectoryContents dir
+        forM_ ents $ \r -> liftIO $ f (pre ++ r)
 
-        fullLength :: HashAlgorithm h => HashFSConf h -> Int
-        fullLength conf = length $ outputDigest (hashfsOutputDesc conf) $ hashFinalize (hashfsHash conf)
+    fullLength :: HashAlgorithm h => HashFSConf h -> Int
+    fullLength conf = length $ outputDigest (hashfsOutputDesc conf) $ hashFinalize (hashfsHash conf)
 
-        --inputd :: HashAlgorithm h => HashFSConf h -> String -> Maybe (Digest h)
-        inputd conf s = inputDigest (hashfsOutputDesc conf) s
+    --inputd :: HashAlgorithm h => HashFSConf h -> String -> Maybe (Digest h)
+    inputd conf s = inputDigest (hashfsOutputDesc conf) s

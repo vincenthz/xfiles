@@ -58,7 +58,7 @@ doDecrypt file key =
                     then return ()
                     else do
                         case decryptChunk key inp of
-                            Left err  -> error ("chunk failure: " ++ err)
+                            Left err  -> error ("chunk failure: " ++ show err)
                             Right out -> B.hPut hout out
                         loop
         loop
