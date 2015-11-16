@@ -65,18 +65,18 @@ readDigest :: String -> Maybe QuarryDigest
 readDigest s = HFS.inputDigest HFS.OutputHex s
 
 -- | Run an HashFS monad operation on top of Quarry.
-runHFS :: HFS.HashFS SHA512 a -> QuarryM a
-runHFS f = ask >>= \conf -> liftIO $ HFS.run f (hashfsConf conf)
+runHFS :: (HFS.HashFSConf SHA512 -> IO a) -> QuarryM a
+runHFS f = ask >>= \conf -> liftIO $ f (hashfsConf conf)
 
 --getRootPath = runHFS (HFS.hashfsRoot <$> ask)
 
 -- | Check if the digest already exists in the database
 exist :: QuarryDigest -> QuarryM Bool
-exist digest = runHFS (maybe False (const True) <$> HFS.readInfo digest)
+exist digest = runHFS (\conf -> maybe False (const True) <$> HFS.readInfo conf digest)
 
 -- | Compute the digest associated with a file
 computeDigest :: FilePath -> QuarryM QuarryDigest
-computeDigest file = runHFS (HFS.computeHash file)
+computeDigest file = runHFS (\conf -> HFS.computeHash conf file)
 
 -- | initialize a new quarry database object.
 --
@@ -91,7 +91,7 @@ initialize wantNew root = do
     hasDb <- doesFileExist (dbFile root)
     if wantNew
         then do when hasDb $ error "look like it's already initialized"
-                HFS.run HFS.initialize quarryHashFSConf
+                HFS.initialize quarryHashFSConf
         else when (not hasDb) $ error "look like no DB"
     conn <- connectSqlite3 (dbFile root)
     when wantNew $ dbCreateTables conn
@@ -112,9 +112,9 @@ importFile itype dataCat mDate mFilename tags rfile = do
     current <- liftIO getCurrentDirectory
     let file = if isRelative rfile then current </> rfile else rfile
     fstat <- liftIO $ getFileStatus file
-    digest <- runHFS $ do
-                    digest <- HFS.importFile itype file
-                    info   <- HFS.readInfo digest
+    digest <- runHFS $ \conf -> do
+                    digest <- HFS.importFile conf itype file
+                    info   <- HFS.readInfo conf digest
                     case info of
                         Nothing -> error ("import of file " ++ file ++ " failed")
                         Just _  -> return digest
@@ -188,7 +188,7 @@ resolveTag (Right tag) = return $ Just tag
 
 -- | Return the path where the digest is stored
 getDigestPath :: QuarryDigest -> QuarryM FilePath
-getDigestPath = runHFS . HFS.getPath
+getDigestPath d = runHFS (\conf -> return $ HFS.getPath conf d)
 
 findDigestWithTags :: [Tag] -> QuarryM [QuarryDigest]
 findDigestWithTags tags = dbFindWithTags tags

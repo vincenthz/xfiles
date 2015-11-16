@@ -60,9 +60,10 @@ Library
                    , Network.LSP.Context
                    , Network.LSP.IO
                    , Storage.HashFS.Types
-                   , Storage.HashFS.Monad
                    , Storage.HashFS.Path
+                   , Storage.HashFS.Hasher
                    , Storage.HashFS.Utils
+                   , Storage.HashFS.Local
   Build-depends:     base >= 4.3 && < 5
                    , bytestring
                    , async

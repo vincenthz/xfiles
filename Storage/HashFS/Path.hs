@@ -10,7 +10,6 @@ module Storage.HashFS.Path
 import Control.Monad.Reader (ask)
 import Control.Monad.Trans
 import Storage.HashFS.Types
-import Storage.HashFS.Monad
 import System.IO (Handle, openBinaryTempFile)
 import Crypto.Hash
 import System.FilePath (joinPath, (</>))
@@ -38,13 +37,13 @@ getDigestSplitPath conf digest = splitDepth (hashfsDepth conf) out
                  in f1 : splitDepth xs f2
 
 -- | Return the path of a digest relative to the root of the hash filesystem
-getPathInRepo :: HashAlgorithm h => Digest h -> HashFS h FilePath
-getPathInRepo digest = ask >>= \conf -> return $ joinPath $ getDigestSplitPath conf digest
+getPathInRepo :: HashAlgorithm h => HashFSConf h -> Digest h -> FilePath
+getPathInRepo conf digest = joinPath $ getDigestSplitPath conf digest
 
 -- | Return an absolute path of the digest
-getPath :: HashAlgorithm h => Digest h -> HashFS h FilePath
-getPath digest = ask >>= \conf -> return (hashfsRoot conf </> (joinPath $ getDigestSplitPath conf digest))
+getPath :: HashAlgorithm h => HashFSConf h -> Digest h -> FilePath
+getPath conf digest = hashfsRoot conf </> (joinPath $ getDigestSplitPath conf digest)
 
 -- | get a temporary file. the file is not deleted after use.
-tmpfilePath :: HashAlgorithm h => HashFS h (FilePath, Handle)
-tmpfilePath = ask >>= \conf -> liftIO (openBinaryTempFile (hashfsRoot conf) ".tmp")
+tmpfilePath :: HashAlgorithm h => HashFSConf h -> IO (FilePath, Handle)
+tmpfilePath conf = openBinaryTempFile (hashfsRoot conf) ".tmp"

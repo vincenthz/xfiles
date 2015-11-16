@@ -1,12 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Storage.HashFS.Types where
 
-import Crypto.Hash
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 
 import qualified Data.ByteArray.Encoding as B
+
+import Storage.HashFS.Hasher
 
 -- | Configuration for HashFS
 data HashFSConf h = HashFSConf
@@ -15,7 +16,7 @@ data HashFSConf h = HashFSConf
     -- e.g. [1,2] will split into a path a/bc/res
       hashfsDepth :: [Int]
     -- | the hash function used
-    , hashfsHash  :: Context h
+    , hashfsHash  :: Hasher h
     -- | The ascii function used
     , hashfsOutputDesc :: OutputDesc
     -- | Root of the hash filesystem
@@ -57,9 +58,9 @@ outputDigest OutputBase64 digest = recode $ show (B.convertToBase B.Base64 diges
 -- | input a string and try to transform to a digest
 inputDigest :: HashAlgorithm h => OutputDesc -> String -> Maybe (Digest h)
 inputDigest OutputHex s
-    | len == 0 || odd len = Nothing
+    | len == 0 || odd len                        = Nothing
     | and (map (validChar OutputHex) s) == False = Nothing
-    | otherwise           = digestFromByteString $ B.pack $ loop s
+    | otherwise                                  = digestFromByteString $ B.pack $ loop s
   where len = length s
         loop []      = []
         loop (_:[])  = error "impossible"
