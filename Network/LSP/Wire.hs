@@ -38,8 +38,8 @@ parseHello bs
 
     parseSpecific :: Version -> P.Parser ByteString HelloData
     parseSpecific (Version 1) = HelloDataV1 <$> parseSessionPublicKey
-                                  <*> parseNodePublicKey
-                                  <*> parseNodeSignature
+                                            <*> parseNodePublicKey
+                                            <*> parseNodeSignature
     parseSpecific i = fail ("invalid version " ++ show i)
 
 putHello :: Hello -> ByteString
