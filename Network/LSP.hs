@@ -2,6 +2,8 @@
 module Network.LSP
     ( Config(..)
     , Backend(..)
+    , NodeSecretKey
+    , NodePublicKey
     , LSP
     , client
     , server

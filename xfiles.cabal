@@ -65,7 +65,10 @@ Library
                    , Storage.HashFS.Hasher
                    , Storage.HashFS.Utils
                    , Storage.HashFS.Local
-                   , Storage.HashFS.Native
+                   , Storage.HashFS.Protocol
+                   , Storage.HashFS.ProtocolUtils
+                   , Storage.HashFS.Client
+                   , Storage.HashFS.Server
                    , Storage.HashFS.ConfigFile
                    , Storage.HashFS.IO
   Build-depends:     base >= 4.3 && < 5

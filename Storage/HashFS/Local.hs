@@ -94,21 +94,28 @@ copyFileToHash conf blocksAcc = do
 hashFileDataReader :: HashAlgorithm h => HashFSConf h -> Digest h -> IO DataReader
 hashFileDataReader conf digest = filepathDataReader (getPath conf digest)
 
-hashFileDataWriter :: HashAlgorithm h => HashFSConf h -> IO (DataWriter h)
+hashFileDataWriter :: HashAlgorithm h => HashFSConf h -> IO (DataWriterDigest h)
 hashFileDataWriter conf = do
     (tmpFile, tmpHandle) <- tmpfilePath conf
     let put bs = B.hPut tmpHandle bs
-        done computedDigest = do
+        done mComputedDigest = do
             hClose tmpHandle
-            existsAlready <- exists conf computedDigest
-            if existsAlready
-                then removeFile tmpFile >> return ()
-                else do
-                    createHier conf computedDigest
-                    let destPath = getPath conf computedDigest
-                    liftIO $ rename tmpFile destPath
-                    return ()
-    return $ DataWriter put done
+            -- remove the tmpfile if:
+            --  * file is wrongly computed (digest is Nothing)
+            --  * destination file already exists
+            -- otherwise rename the file to the destination path
+            case mComputedDigest of
+                Nothing             -> removeFile tmpFile
+                Just computedDigest -> do
+                    existsAlready <- exists conf computedDigest
+                    if existsAlready
+                        then removeFile tmpFile >> return ()
+                        else do
+                            createHier conf computedDigest
+                            let destPath = getPath conf computedDigest
+                            liftIO $ rename tmpFile destPath
+                            return ()
+    return $ DataWriterDigest put done
 
 -- | initialize ! :)
 initialize :: HashAlgorithm h => HashFSConf h -> IO ()

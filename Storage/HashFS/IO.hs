@@ -16,7 +16,8 @@ newtype DataReader = DataReader (IO (Maybe ByteString))
 
 data DataWriter = DataWriter (ByteString -> IO ()) (IO ())
 
-data DataWriterDigest h = DataWriterDigest (ByteString -> IO ()) (Digest h -> IO ())
+data DataWriterDigest h = DataWriterDigest (ByteString -> IO ())
+                                           (Maybe (Digest h) -> IO ())
 
 filepathDataReader :: FilePath -> IO DataReader
 filepathDataReader fp = do
@@ -29,19 +30,18 @@ filepathDataReader fp = do
     return $ DataReader rC
 
 onDataChunksDigest :: HashAlgorithm h
-                   => DataReader   -- ^ read data callback
-                   -> DataWriter h -- ^ write data callback
+                   => DataReader         -- ^ read data callback
+                   -> DataWriterDigest h -- ^ write data callback
                    -> IO (Digest h)
-onDataChunksDigest (DataReader readCallback readDone) (DataWriter writeCallback writeDone) =
+onDataChunksDigest (DataReader readCallback) (DataWriterDigest writeCallback writeDone) =
     loop hashInitializeContext
   where
     loop !ctx = do
         mb <- readCallback
         case mb of
             Nothing -> do
-                readDone
                 let !digest = hashFinalize ctx
-                writeDone digest
+                writeDone (Just digest)
                 return $ digest
             Just b  -> do
                 writeCallback b
