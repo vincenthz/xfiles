@@ -21,7 +21,7 @@ data HashFSConf h = HashFSConf
     , hashfsOutputDesc :: OutputDesc
     -- | Root of the hash filesystem
     , hashfsRoot :: FilePath
-    }
+    } deriving (Show,Eq)
 
 -- | Internal variant to handle output format of ASCII
 data OutputFormat = OutputString String | OutputByteString ByteString
@@ -33,6 +33,7 @@ lengthOutputFormat (OutputByteString s) = B.length s
 -- | type of encoding for digest output
 data OutputDesc =
       OutputHex    -- ^ hexadecimal, base16 output
+    | OutputBase32 -- ^ base32 with / as _. more efficient than hex and work on CI filesystem
     | OutputBase64 -- ^ base64 with / as _. doesn't work on CI filesystem.
     -- | OutputCustom (Char -> Bool) (Digest h -> OutputFormat) (OutputFormat -> Digest h)
     deriving (Show,Read,Eq)
@@ -41,6 +42,9 @@ validChar :: OutputDesc -> Char -> Bool
 validChar OutputHex c
     | fromEnum c < 0x80 = maybe False (const True) $ B.elemIndex (fromIntegral $ fromEnum c) base16Dict
     | otherwise         = False
+validChar OutputBase32 c
+    | fromEnum c < 0x80 = maybe False (const True) $ B.elemIndex (fromIntegral $ fromEnum c) base32Dict
+    | otherwise         = False
 validChar OutputBase64 c
     | fromEnum c < 0x80 = maybe False (const True) $ B.elemIndex (fromIntegral $ fromEnum c) base64Dict
     | otherwise         = False
@@ -48,12 +52,18 @@ validChar OutputBase64 c
 -- | Transform a digest into a String
 outputDigest :: OutputDesc -> Digest h -> String
 outputDigest OutputHex digest    = show digest
-outputDigest OutputBase64 digest = recode $ show (B.convertToBase B.Base64 digest :: ByteString)
-  where recode []           = []
-        recode ('=':[])     = []
-        recode ('=':'=':[]) = []
-        recode (x:xs) | x == '/'  = '_':recode xs
-                      | otherwise = x:recode xs
+outputDigest OutputBase32 digest = removePadding $ BC.unpack (B.convertToBase B.Base32 digest :: ByteString)
+  where removePadding [] = []
+        removePadding ('=':xs) = removePadding xs
+        removePadding (x:xs)   = x:removePadding xs
+outputDigest OutputBase64 digest = recode $ BC.unpack (B.convertToBase B.Base64 digest :: ByteString)
+  where
+    -- remove the padding and replace '/' by '_'
+    recode []           = []
+    recode ('=':[])     = []
+    recode ('=':'=':[]) = []
+    recode (x:xs) | x == '/'  = '_':recode xs
+                  | otherwise = x:recode xs
 
 -- | input a string and try to transform to a digest
 inputDigest :: HashAlgorithm h => OutputDesc -> String -> Maybe (Digest h)
@@ -68,6 +78,12 @@ inputDigest OutputHex s
         unhex c | c >= '0' && c <= '9' = fromIntegral (fromEnum c - fromEnum '0')
                 | c >= 'a' && c <= 'f' = fromIntegral (fromEnum c - fromEnum 'a' + 10)
                 | otherwise            = error "invalid character"
+inputDigest OutputBase32 s
+    | and (map (validChar OutputBase32) s) == False = Nothing
+    | otherwise                                     =
+        case B.convertFromBase B.Base32 (BC.pack s) of
+            Left _   -> Nothing
+            Right b  -> digestFromByteString (b :: ByteString)
 inputDigest OutputBase64 s
     | len == 0  = Nothing
     | otherwise = Nothing
@@ -76,19 +92,9 @@ inputDigest OutputBase64 s
 base16Dict :: ByteString
 base16Dict = "0123456789abcdef"
 
+-- rfc 4648
+base32Dict :: ByteString
+base32Dict = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+
 base64Dict :: ByteString
 base64Dict = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+_"
-
-iteratePathRoot :: Int -> OutputDesc -> [FilePath]
-iteratePathRoot n OutputHex =
-    case n of
-        1 -> [ [a]   | a <- base ]
-        2 -> [ [a,b] | a <- base, b <- base ]
-        _ -> error "not implemented"
-  where base = "0123456789abcdef"
-iteratePathRoot n OutputBase64 =
-    case n of
-        1 -> [ [a]   | a <- base ]
-        2 -> [ [a,b] | a <- base, b <- base ]
-        _ -> error "not implemented"
-  where base = BC.unpack base64Dict

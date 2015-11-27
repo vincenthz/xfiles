@@ -9,14 +9,18 @@
 --
 {-# LANGUAGE OverloadedStrings #-}
 module Tools.Config
-    ( Config(..)
+    ( Config
     , Section(..)
+    , KeyValues
     -- * reading methods
     , readConfigPath
-    -- * methods
+    -- * Config querying
     , listSections
     , get
     , getAll
+    , getAllSections
+    -- * KeyValues querying
+    , kvsGet
     ) where
 
 import           Control.Monad
@@ -26,12 +30,19 @@ import           System.FilePath
 import           Data.List (find, isPrefixOf)
 import qualified Data.Set as S
 
-newtype Config = Config [Section]
+type Key = String
+type Value = String
+type SectionName = String
+
+newtype Config = Config { unConfig :: [Section] }
+    deriving (Show,Eq)
+
+newtype KeyValues = KeyValues { unKeyValues :: [(Key, Value)] }
     deriving (Show,Eq)
 
 data Section = Section
     { sectionName :: String
-    , sectionKVs  :: [(String, String)]
+    , sectionKVs  :: KeyValues
     } deriving (Show,Eq)
 
 parseConfig :: String -> Config
@@ -46,8 +57,8 @@ parseConfig = Config . reverse . toSections . foldl accSections ([], Nothing) . 
             | last sectNameE == ']' =
                 let sectName = take (length sectNameE - 1) sectNameE
                  in case mcurrent of
-                    Nothing      -> (sections, Just $ Section sectName [])
-                    Just current -> (sectionFinalize current : sections, Just $ Section sectName [])
+                    Nothing      -> (sections, Just $ Section sectName (KeyValues []))
+                    Just current -> (sectionFinalize current : sections, Just $ Section sectName (KeyValues []))
             | otherwise             =
                 (sections, mcurrent)
         -- a normal line without having any section defined yet
@@ -58,8 +69,8 @@ parseConfig = Config . reverse . toSections . foldl accSections ([], Nothing) . 
                 (k,'=':v) -> (sections, Just $ sectionAppend current (strip k, strip v))
                 (_,_)     -> (sections, Just current) -- not a k = v line
         -- append a key-value
-        sectionAppend (Section n l) kv = Section n (kv:l)
-        sectionFinalize (Section n l) = Section n $ reverse l
+        sectionAppend (Section n (KeyValues l)) kv = Section n $ KeyValues (kv:l)
+        sectionFinalize (Section n (KeyValues l)) = Section n $ KeyValues $ reverse l
 
         strip s = dropSpaces $ reverse $ dropSpaces $ reverse s
           where dropSpaces = dropWhile (\c -> c == ' ' || c == '\t')
@@ -72,21 +83,34 @@ listSections = S.toList . foldr accSections S.empty
   where accSections (Config sections) set = foldr S.insert set (map sectionName sections)
 
 -- | Get a configuration element in a stack of config file, starting from the top.
-get :: [Config] -- ^ stack of config
-    -> String   -- ^ section name
-    -> String   -- ^ key name
-    -> Maybe String
+get :: [Config]    -- ^ stack of config
+    -> SectionName -- ^ section name
+    -> Key         -- ^ key name
+    -> Maybe Value
 get []            _       _   = Nothing
 get (Config c:cs) section key = findOne `mplus` get cs section key
-  where findOne = find (\s -> sectionName s == section) c >>= lookup key . sectionKVs
+  where findOne = find (\s -> sectionName s == section) c >>= lookup key . unKeyValues . sectionKVs
 
 -- | Get many configuration elements in a stack of config file, starting from the top.
-getAll :: [Config] -- ^ stack of config
-       -> String   -- ^ section name
-       -> String   -- ^ key name
-       -> [String]
+getAll :: [Config]    -- ^ stack of config
+       -> SectionName -- ^ section name
+       -> Key         -- ^ key name
+       -> [Value]
 getAll configs section key = mconcat $ catMaybes (map findAll configs)
   where
-    findAll :: Config -> Maybe [String]
-    findAll (Config c) = map snd . filter ((== key) . fst) . sectionKVs
+    findAll :: Config -> Maybe [Value]
+    findAll (Config c) = map snd . filter ((== key) . fst) . unKeyValues . sectionKVs
                      <$> find (\s -> sectionName s == section) c
+
+-- | Return all sections matching a specific name
+getAllSections :: [Config]
+               -> SectionName -- ^ name of the section to match
+               -> [KeyValues]
+getAllSections configs section =
+    map sectionKVs $ mconcat $ map (filter ((==) section . sectionName) . unConfig) configs
+
+-- | Try to find a key in a KeyValue dictionnary
+kvsGet :: KeyValues
+       -> Key
+       -> Maybe Value
+kvsGet (KeyValues kvs) key = lookup key kvs

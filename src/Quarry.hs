@@ -243,6 +243,7 @@ cmdInfo args = do
             putStrLn ("tags       : " ++ show (infoNTag info))
             putStrLn ("categories : " ++ show (infoNCategory info))
 
+{-
 cmdView args = do
     case args of
         path:digests -> doView path digests
@@ -260,6 +261,7 @@ cmdView args = do
             path <- getDigestPath digest
             ty   <- getQuarryFileType path
             return (path, ty)
+-}
 
 commands =
     [ ("init"  , (cmdInit, "initialize a repository"))
@@ -271,7 +273,7 @@ commands =
     , ("find"  , (cmdFind, "find contents by query"))
     , ("exist" , (cmdExist, "check if some file already exist"))
     , ("info"  , (cmdInfo, "get quarry general state information"))
-    , ("view"  , (cmdView, "use a viewer on digest"))
+    -- , ("view"  , (cmdView, "use a viewer on digest"))
     ]
 
 main = do

@@ -16,7 +16,7 @@ module Tools.Quarry
     -- * Methods
     , QuarryDigest
     , QuarryDigestInfo(..)
-    , getQuarryDigestType
+    --, getQuarryDigestType
     , getQuarryFileType
     , getQuarryDigestInfo
     , runQuarry
@@ -24,7 +24,7 @@ module Tools.Quarry
     , updateDigest
     , resolveDigest
     , resolveTag
-    , getDigestPath
+    --, getDigestPath
     , getCategoryTable
     , findDigestWithTags
     , readDigest
@@ -48,7 +48,7 @@ import System.FilePath
 import System.Directory
 import Data.Word
 
-import Data.Time.Clock.POSIX
+import Storage.Utils
 
 import Database.HDBC.Sqlite3 (connectSqlite3)
 
@@ -65,18 +65,18 @@ readDigest :: String -> Maybe QuarryDigest
 readDigest s = HFS.inputDigest HFS.OutputHex s
 
 -- | Run an HashFS monad operation on top of Quarry.
-runHFS :: (HFS.HashFSConf SHA512 -> IO a) -> QuarryM a
+runHFS :: (HFS.Provider SHA512 -> IO a) -> QuarryM a
 runHFS f = ask >>= \conf -> liftIO $ f (hashfsConf conf)
 
 --getRootPath = runHFS (HFS.hashfsRoot <$> ask)
 
 -- | Check if the digest already exists in the database
 exist :: QuarryDigest -> QuarryM Bool
-exist digest = runHFS (\conf -> maybe False (const True) <$> HFS.readInfo conf digest)
+exist digest = runHFS $ \conf -> HFS.exists [conf] digest
 
 -- | Compute the digest associated with a file
 computeDigest :: FilePath -> QuarryM QuarryDigest
-computeDigest file = runHFS (\conf -> HFS.computeHash conf file)
+computeDigest file = liftIO $ HFS.hashFileContext file -- runHFS (\conf -> HFS.fileHashContext conf file)
 
 -- | initialize a new quarry database object.
 --
@@ -89,21 +89,22 @@ initialize :: Bool            -- ^ if we initialize the storage or not
 initialize wantNew root = do
     dirExist <- doesDirectoryExist root
     hasDb <- doesFileExist (dbFile root)
-    if wantNew
+    provider <- if wantNew
         then do when hasDb $ error "look like it's already initialized"
-                HFS.initialize quarryHashFSConf
-        else when (not hasDb) $ error "look like no DB"
+                HFS.initializeLocally "quarry" root
+        else do when (not hasDb) $ error "look like no DB"
+                return $ HFS.Provider "quarry" HFS.ReadWrite (HFS.ProviderLocal $ HFS.makeConfContext [2] HFS.OutputBase32 root)
     conn <- connectSqlite3 (dbFile root)
     when wantNew $ dbCreateTables conn
     cache <- emptyCache
-    return $ QuarryConfig { connection = conn, hashfsConf = quarryHashFSConf, cacheTags = cache }
-  where quarryHashFSConf = HFS.makeConfSHA512 [2] HFS.OutputHex root
+    return $ QuarryConfig { connection = conn, hashfsConf = provider, cacheTags = cache }
+  --where quarryHashFSConf = HFS.makeConfSHA512 [2] HFS.OutputHex root
 
 -- | Import an element into quarry and returns the digest associated
 -- and if the element has been created or updated.
 importFile :: ImportType      -- ^ Whether to copy/symlink/hardlink ..
            -> DataCategory    -- ^ Category of data (video,book,..)
-           -> Maybe POSIXTime -- ^ An optional associated date
+           -> Maybe ModificationTime -- ^ An optional associated date
            -> Maybe FilePath  -- ^ Alternative name to import the file to
            -> [Tag]           -- ^ Tags to add to this file
            -> FilePath        -- ^ Path to the file
@@ -111,18 +112,12 @@ importFile :: ImportType      -- ^ Whether to copy/symlink/hardlink ..
 importFile itype dataCat mDate mFilename tags rfile = do
     current <- liftIO getCurrentDirectory
     let file = if isRelative rfile then current </> rfile else rfile
-    fstat <- liftIO $ getFileStatus file
-    digest <- runHFS $ \conf -> do
-                    digest <- HFS.importFile conf itype file
-                    info   <- HFS.readInfo conf digest
-                    case info of
-                        Nothing -> error ("import of file " ++ file ++ " failed")
-                        Just _  -> return digest
-    key <- dbResolveDigest digest
+    info   <- liftIO $ getFileInfo file
+    digest <- runHFS $ \conf -> HFS.importInto conf itype file
+    key    <- dbResolveDigest digest
     case key of
         Nothing -> do
             ty <- getQuarryFileType file
-            let info = (fromIntegral $ fileSize fstat, realToFrac $ modificationTime fstat)
             k  <- dbAddFile digest dataCat (maybe file id mFilename) mDate info ty
             when (not $ null tags) $ do
                 mapM_ (dbCreateTag >=> dbAddTag k) tags
@@ -130,11 +125,13 @@ importFile itype dataCat mDate mFilename tags rfile = do
             return (digest, True)
         Just _ -> return (digest, False)
 
+{-
 getQuarryDigestType :: QuarryDigest -> QuarryM (QuarryFileType, FileFormat)
 getQuarryDigestType digest = do
     p  <- getDigestPath digest
     ff <- liftIO $ getFileformat p
     return (toQuarryFileType ff, ff)
+-}
 
 -- | Return the associated data with a quarry digest
 getQuarryDigestInfo :: QuarryDigest -> QuarryM (Maybe QuarryDigestInfo)
@@ -187,8 +184,8 @@ resolveTag (Left tname) = do
 resolveTag (Right tag) = return $ Just tag
 
 -- | Return the path where the digest is stored
-getDigestPath :: QuarryDigest -> QuarryM FilePath
-getDigestPath d = runHFS (\conf -> return $ HFS.getPath conf d)
+--getDigestPath :: QuarryDigest -> QuarryM FilePath
+--getDigestPath d = runHFS (\conf -> return $ HFS.getPath conf d)
 
 findDigestWithTags :: [Tag] -> QuarryM [QuarryDigest]
 findDigestWithTags tags = dbFindWithTags tags

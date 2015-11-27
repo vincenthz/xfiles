@@ -87,8 +87,8 @@ dbCreateTables conn = do
         , "CREATE TABLE tag (id INTEGER PRIMARY KEY, name VARCHAR(128), category INTEGER NOT NULL)"
         , "CREATE TABLE category (id INTEGER PRIMARY KEY, name VARCHAR(256), abstract INTEGER NOT NULL)"
         , "CREATE TABLE tagmap (data_id INTEGER NOT NULL, tag_id INTEGER NOT NULL, UNIQUE(data_id, tag_id) ON CONFLICT REPLACE)"
-        , "CREATE TABLE group (id INTEGER PRIMARY KEY, description VARCHAR(1024))"
-        , "CREATE TABLE groupmap (group_id INTEGER NOT NULL, data_id INTEGER NOT NULL, UNIQUE(group_id, data_id) ON CONFLICT REPLACE)"
+        , "CREATE TABLE grp (id INTEGER PRIMARY KEY, description VARCHAR(1024))"
+        , "CREATE TABLE grpmap (group_id INTEGER NOT NULL, data_id INTEGER NOT NULL, UNIQUE(group_id, data_id) ON CONFLICT REPLACE)"
         , "INSERT INTO version VALUES (1)"
         , "INSERT INTO category VALUES (1, 'personal', 0)"
         , "INSERT INTO category VALUES (2, 'video', 0)"
@@ -171,7 +171,7 @@ dbResolveKeyCategory fk = do
 
 dbResolveKeyGroup :: KeyGroup -> QuarryM Group
 dbResolveKeyGroup fk = do
-    r <- withDB $ \conn -> liftIO $ quickQuery conn ("SELECT description FROM group WHERE id=" ++ show (getPrimaryKey fk)) []
+    r <- withDB $ \conn -> liftIO $ quickQuery conn ("SELECT description FROM grp WHERE id=" ++ show (getPrimaryKey fk)) []
     case r of
         [[desc]] -> return $ Group $ fromSql desc
         _        -> error ("group key " ++ show fk ++ " cannot be resolved")

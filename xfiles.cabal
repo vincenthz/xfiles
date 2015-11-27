@@ -30,6 +30,7 @@ Library
                    , Network.LSP
                    , Storage.HashFS
                    , Storage.LockFile
+                   , Storage.Utils
   Other-modules:     Tools.ChronoFs.Marshall
                    , Tools.ChronoFs.Types
                    , Tools.ChronoFs.Monad
@@ -64,6 +65,9 @@ Library
                    , Storage.HashFS.Hasher
                    , Storage.HashFS.Utils
                    , Storage.HashFS.Local
+                   , Storage.HashFS.Native
+                   , Storage.HashFS.ConfigFile
+                   , Storage.HashFS.IO
   Build-depends:     base >= 4.3 && < 5
                    , bytestring
                    , async
@@ -176,7 +180,7 @@ Executable           xdu
   Buildable:         True
   default-language:  Haskell2010
 
-Executable quarry
+Executable           quarry
   Main-Is:           Quarry.hs
   Hs-Source-Dirs:    src
   ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports

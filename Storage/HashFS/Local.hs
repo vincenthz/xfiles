@@ -13,6 +13,7 @@ import Storage.HashFS.Types
 import Storage.HashFS.Hasher
 import Storage.HashFS.Path
 import Storage.HashFS.Utils
+import Storage.HashFS.IO
 import System.IO hiding (readFile)
 import Prelude hiding (readFile)
 import Data.Time.Clock.POSIX (POSIXTime)
@@ -36,13 +37,25 @@ makeConf depth hasher oDesc rootFs =
                , hashfsRoot       = rootFs
                }
 
+makeConfContext :: HashAlgorithm h
+                => [Int]
+                -> OutputDesc
+                -> FilePath
+                -> HashFSConf h
+makeConfContext depth oDesc rootFs =
+    HashFSConf { hashfsDepth      = depth
+               , hashfsHash       = hasherInitContext
+               , hashfsOutputDesc = oDesc
+               , hashfsRoot       = rootFs
+               }
+
 -- | Create a configuration with SHA256 as the Hash
 makeConfSHA512 :: [Int] -> OutputDesc -> FilePath -> HashFSConf SHA512
-makeConfSHA512 depth = makeConf depth (hasherInit SHA512)
+makeConfSHA512 depth = makeConf depth hasherInitContext
 
 -- | Create a configuration with SHA256 as the Hash
 makeConfSHA256 :: [Int] -> OutputDesc -> FilePath -> HashFSConf SHA256
-makeConfSHA256 depth = makeConf depth (hasherInit SHA256)
+makeConfSHA256 depth = makeConf depth hasherInitContext
 
 -- | Compute the digest according to the HashFSConf of any file
 computeHash :: HashAlgorithm h => HashFSConf h -> FilePath -> IO (Digest h)
@@ -77,6 +90,25 @@ copyFileToHash conf blocksAcc = do
   where
     copyAndHash outHandle hashCtx block =
         B.hPut outHandle block >> return (hashUpdate hashCtx block)
+
+hashFileDataReader :: HashAlgorithm h => HashFSConf h -> Digest h -> IO DataReader
+hashFileDataReader conf digest = filepathDataReader (getPath conf digest)
+
+hashFileDataWriter :: HashAlgorithm h => HashFSConf h -> IO (DataWriter h)
+hashFileDataWriter conf = do
+    (tmpFile, tmpHandle) <- tmpfilePath conf
+    let put bs = B.hPut tmpHandle bs
+        done computedDigest = do
+            hClose tmpHandle
+            existsAlready <- exists conf computedDigest
+            if existsAlready
+                then removeFile tmpFile >> return ()
+                else do
+                    createHier conf computedDigest
+                    let destPath = getPath conf computedDigest
+                    liftIO $ rename tmpFile destPath
+                    return ()
+    return $ DataWriter put done
 
 -- | initialize ! :)
 initialize :: HashAlgorithm h => HashFSConf h -> IO ()
