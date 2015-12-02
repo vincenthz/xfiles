@@ -1,6 +1,7 @@
 module Storage.HashFS.ProtocolUtils where
 
 import           Control.Concurrent.MVar
+import           Control.Monad
 
 import qualified Data.ByteArray.Pack as C
 import qualified Data.ByteArray.Parse as P
@@ -19,6 +20,8 @@ import           Storage.HashFS.Hasher
 import           Storage.HashFS.IO
 import           Storage.HashFS.Protocol
 
+import           Storage.Utils
+
 sendDataReader :: LSP
                -> DataReader
                -> IO ()
@@ -29,6 +32,20 @@ sendDataReader lsp (DataReader rcb) = loop
         case mbs of
             Nothing -> return ()
             Just bs -> send lsp bs >> loop
+
+recvToDataWriter :: LSP
+                 -> FileSize
+                 -> DataWriter
+                 -> IO ()
+recvToDataWriter lsp fs (DataWriter pushWriter closeWriter) = loop fs
+  where
+    loop n
+        | n == 0    = closeWriter >> return ()
+        | otherwise = do
+            let sz = fromIntegral $ min 2048 n
+            b <- recv lsp sz
+            when (B.length b > 0) $ pushWriter b
+            loop (n - fromIntegral (B.length b))
 
 -- | Receive data of a specific size and compute a digest
 -- as the data is received. the user need to supply a function

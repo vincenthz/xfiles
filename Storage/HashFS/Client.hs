@@ -42,25 +42,43 @@ clientSendData :: Client
                -> EntityId
                -> PayloadLength
                -> DataReader
-               -> IO ()
+               -> IO ProtocolStatus
 clientSendData conn digest fileSize dataReader =
     withClient conn $ \lsp -> do
         sendCommand lsp (Command fileSize $ Put digest)
-        sendDataReader lsp dataReader
+        r <- expectAck <$> waitAck lsp
+        case r of
+            Left err -> return $ ProtocolErr err
+            Right () -> do
+                sendDataReader lsp dataReader
+                return ProtocolOK
 
 clientRecvDataDigest :: HashAlgorithm h
                      => Client
                      -> EntityId
                      -> Digest h -- ^ expected digest
                      -> DataWriterDigest h
-                     -> IO ()
+                     -> IO ProtocolStatus
 clientRecvDataDigest conn entityId expectedDigest (DataWriterDigest wcb fcb) =
     withClient conn $ \lsp -> do
         sendCommand lsp (Command 0 $ Get entityId)
-        payloadLength  <- parsePayloadLength <$> recv lsp 8
-        computedDigest <- recvSizeDigest lsp payloadLength wcb
-        fcb $ if computedDigest == expectedDigest then Just expectedDigest else Nothing
-        return ()
+        r <- expectAckSize <$> waitAck lsp
+        case r of
+            Left err            -> return $ ProtocolErr err
+            Right payloadLength -> do
+                computedDigest <- recvSizeDigest lsp payloadLength wcb
+                fcb $ if computedDigest == expectedDigest then Just expectedDigest else Nothing
+                return ProtocolOK
+
+expectAck :: Ack -> Either ProtocolError ()
+expectAck (AckOk)      = Right ()
+expectAck (AckErr err) = Left err
+expectAck (AckSize _)  = Left Unexpected
+
+expectAckSize :: Ack -> Either ProtocolError Word64
+expectAckSize (AckSize sz) = Right sz
+expectAckSize (AckErr err) = Left err
+expectAckSize (AckOk)      = Left Unexpected
 
 clientNew :: ConnectionConfig -> IO Client
 clientNew concfg = Client <$> pure concfg <*> newMVar Nothing

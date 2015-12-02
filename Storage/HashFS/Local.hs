@@ -14,6 +14,7 @@ import Storage.HashFS.Hasher
 import Storage.HashFS.Path
 import Storage.HashFS.Utils
 import Storage.HashFS.IO
+import Storage.Utils
 import System.IO hiding (readFile)
 import Prelude hiding (readFile)
 import Data.Time.Clock.POSIX (POSIXTime)
@@ -185,9 +186,8 @@ readFile :: HashAlgorithm h => HashFSConf h -> Digest h -> IO (Maybe L.ByteStrin
 readFile conf digest = onDigestFile conf digest (catchIO . L.readFile)
 
 -- | get information about a specific Digest, namely size and mtime
-readInfo :: HashAlgorithm h => HashFSConf h -> Digest h -> IO (Maybe (Word64, POSIXTime))
-readInfo conf digest = onDigestFile conf digest (\path -> catchIO (toInfo <$> getFileStatus path))
-  where toInfo fstat = (fromIntegral $ fileSize fstat, realToFrac $ modificationTime fstat)
+readInfo :: HashAlgorithm h => HashFSConf h -> Digest h -> IO (Maybe (FileSize, ModificationTime))
+readInfo conf digest = onDigestFile conf digest (\path -> catchIO (getFileInfo path))
 
 -- | Take a list of prefixes and returns chunks in this prefix path directory
 iterateFiles :: HashAlgorithm h => HashFSConf h -> (Digest h -> IO ()) -> IO ()

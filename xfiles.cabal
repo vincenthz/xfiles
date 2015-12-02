@@ -29,6 +29,8 @@ Library
                    , Console.Options
                    , Network.LSP
                    , Storage.HashFS
+                   , Storage.HashFS.Client
+                   , Storage.HashFS.Server
                    , Storage.LockFile
                    , Storage.Utils
   Other-modules:     Tools.ChronoFs.Marshall
@@ -67,8 +69,6 @@ Library
                    , Storage.HashFS.Local
                    , Storage.HashFS.Protocol
                    , Storage.HashFS.ProtocolUtils
-                   , Storage.HashFS.Client
-                   , Storage.HashFS.Server
                    , Storage.HashFS.ConfigFile
                    , Storage.HashFS.IO
   Build-depends:     base >= 4.3 && < 5
