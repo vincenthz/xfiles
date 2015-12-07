@@ -3,11 +3,13 @@ module Storage.HashFS.Server
     , ServerImplStore(..)
     , ServerImplTrust(..)
     , serverNew
+    , serverWait
     , serverShut
     ) where
 
 import           Control.Concurrent
 import           Control.Concurrent.MVar
+import           Control.Concurrent.Chan
 import           Control.Monad
 
 import qualified Data.ByteArray.Pack as C
@@ -32,31 +34,42 @@ import           Storage.Utils (FileSize)
 
 type ClientHandle = MVar LSP
 
-type Server = Handler ClientHandle
+data Server = Server
+    { serverHandler :: Handler ClientHandle
+    , serverP       :: Chan ()
+    }
+
+type KeyByAddr = SockAddr -> ((NodeSecretKey, NodePublicKey), [NodePublicKey])
 
 serverNew :: ServerImplStore
+          -> KeyByAddr
           -> Socket
           -> IO Server
-serverNew impl sock = do
+serverNew impl keyByAddr serverSock = do
     handler <- handlerStart (serverProcessConn impl)
-    let listener = listenerCreate sock mempty onCreate
+    let listener = listenerCreate serverSock mempty onCreate
     handlerAddListener handler listener
-    return handler
+    Server <$> pure handler <*> newChan
   where
     onCreate sock sockaddr = do
-        let privKey    = undefined
-            clientKeys = undefined
-        let lspConf = Config { private = privKey
+        let (privKey, clientKeys) = keyByAddr sockaddr
+            lspConf = Config { private = privKey
                              , allowed = clientKeys
                              }
         lsp <- server sock lspConf >>= newMVar
         let onClose = shutdown sock ShutdownBoth
         return $ Right (lsp, onClose)
 
+serverWait :: Server -> IO ()
+serverWait (Server _ ch) = do
+    () <- readChan ch
+    return ()
+
 serverShut :: Server -> IO ()
-serverShut serv = do
+serverShut (Server _ ch) = do
     -- FIXME shutdown all listener, and all already on clients
     --shutdown (serverListeningSocket serv) ShutdownBoth
+    writeChan ch ()
     return ()
 
 -- | Server Store is just a naive implementation that does not check any property
