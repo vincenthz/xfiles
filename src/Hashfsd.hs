@@ -8,6 +8,8 @@ import           Text.Read
 import           Data.Maybe
 import qualified Crypto.PubKey.Ed25519 as Ed25519
 import           Crypto.Error
+import           Data.Hourglass
+import           System.Hourglass
 import qualified Tools.Config as Config
 
 import qualified Data.ByteArray.Encoding as B
@@ -153,5 +155,11 @@ main = do
                 , serverImplPut = doPut
                 }
 
-    serv <- serverNew impl keyByAddr sock
+    serv <- serverNew impl
+    serverListen sock keyByAddr serv
+    serverSetLog serv $ \le -> do
+        t <- timeCurrentP
+        let timeS = timePrint "YYYY-MM-DD H:MI:S.p5" t
+        putStrLn (timeS ++ " " ++ show le)
+    threadDelay 10000000
     serverWait serv

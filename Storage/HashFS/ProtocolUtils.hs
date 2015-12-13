@@ -1,6 +1,5 @@
 module Storage.HashFS.ProtocolUtils where
 
-import           Control.Concurrent.MVar
 import           Control.Monad
 
 import qualified Data.ByteArray.Pack as C

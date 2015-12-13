@@ -4,6 +4,7 @@ module Storage.HashFS.Client
     , Client
     , EntityId
     , clientNew
+    , clientEstablish
     , clientShut
     , clientSendData
     , clientRecvDataDigest
@@ -94,6 +95,16 @@ withClient (Client cfg mmest) f =
             Just (_, lsp) -> do
                 a <- f lsp
                 return (mest, a)
+
+clientEstablish :: Client -> IO ()
+clientEstablish (Client cfg mmest) = do
+    modifyMVar mmest $ \mest ->
+        case mest of
+            Nothing -> do
+                establishedParams@(_, lsp) <- initiateConnection cfg
+                return (Just establishedParams, ())
+            Just _  -> do
+                return (mest, ())
 
 clientShut :: Client -> IO ()
 clientShut (Client _ mmest) =

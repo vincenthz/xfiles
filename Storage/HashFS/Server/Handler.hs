@@ -1,21 +1,25 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Storage.HashFS.Server.Handler
     ( FireWall(..)
+    , FireWallDenied(..)
+    , FireWallStatus(..)
     , Handler
     , Listener
     , listenerCreate
-    , handlerStart
+    , handlerCreate
     , handlerAddListener
     -- * no export from here
     , grab
     ) where
 
 import           Control.Concurrent (ThreadId, forkIO)
+import           Control.Concurrent.Async
 import           Control.Concurrent.MVar
 import           Control.Monad
 import           Control.Exception hiding (Handler)
 import           Network.Socket hiding (send, recv)
 import qualified Data.Map as M
+import           Data.IORef
 
 type TableElem = (ThreadId, Socket, SockAddr, IO ())
 
@@ -99,26 +103,25 @@ listenerCreate :: Socket
                -> (Socket -> SockAddr -> IO (Either String (a, IO ()))) -- ^ on open callback
                -> Listener a
 listenerCreate sock fw onOpen =
-    Listener
-        { listeningSocket = sock
-        , firewall        = fw
-        , onConnect       = onOpen
-        }
+    Listener sock fw onOpen
 
-handlerStart :: (a -> IO ())   -- ^ running callback
-             -> IO (Handler a) 
-handlerStart run =
+handlerCreate :: (a -> IO ())   -- ^ running callback
+              -> IO (Handler a) 
+handlerCreate run =
     Handler <$> newMVar []
             <*> newMVar newTable 
             <*> pure run
 
 handlerAddListener :: Handler a
                    -> Listener a
-                   -> IO ()
+                   -> IO (Async ())
 handlerAddListener handler listener = do
     modifyMVar_ (listeners handler) $ \l -> return (listener : l)
-    _ <- forkIO $ forever $ listenerAccept listener handler
-    return ()
+    a <- async $ forever $ do
+            catch (listenerAccept listener handler)
+                  (\e -> putStrLn ("accepting exception: " ++ show (e :: SomeException)))
+            return ()
+    return a
 
 listenerAccept :: Listener a
                -> Handler a
@@ -128,7 +131,7 @@ listenerAccept listener handler = do
     nbClientsAlready         <- grab (table handler) (return . countTableAddrs clientAddr)
     case checkFirewall (firewall listener) nbClientsAlready clientAddr of
         FireWallDenied _reason -> shutdown clientSock ShutdownBoth
-        FireWallAuthorized    -> do
+        FireWallAuthorized     -> do
             clientComm    <- newEmptyMVar
             -- start the thread handling this specific client
             clientHandler <- forkIO $ do

@@ -40,6 +40,7 @@ main = do
             , concfgMyKey       = key
             }
     client <- clientNew conCfg
+    clientEstablish client
     putStrLn ("connected to server on port " ++ show serverPort)
 
     -- FIXME do something
