@@ -132,13 +132,16 @@ pushFromTo destProvider sourceProvider digest =
     localToLocal d s = do
         dr       <- Local.hashFileDataReader s digest
         dw       <- Local.hashFileDataWriter d
-        computed <- onDataChunksDigest dr dw
+        computed <- pipeDataDigest dr dw
         when (computed /= digest) $ error ("source provider " ++ show sourceProvider ++ " inconsistent digest: " ++ show digest ++ " got: " ++ show computed)
     -- retrieve a remote file on the local copy
-    pullFromRemote _ _ = undefined
+    pullFromRemote _ _ =
+        error "pullFromRemote is not implemented yet"
     -- push a remote file from local
-    pushToRemote _ _ = undefined
+    pushToRemote _ _ =
+        error "pushToRemote is not implemented yet"
     -- if source and destination can talk to each other, then smart protocol could
     -- make the data be replicated, otherwise this will default to
     -- local retrieval, plus remote sending.
-    remoteToRemote _ _ = undefined
+    remoteToRemote _ _ =
+        error "remoteToRemote is not implemented yet"

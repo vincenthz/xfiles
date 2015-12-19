@@ -24,12 +24,12 @@ import           Storage.Utils
 sendDataReader :: LSP
                -> DataReader
                -> IO ()
-sendDataReader lsp (DataReader rcb) = loop
+sendDataReader lsp (DataReader rcb ccb) = loop
   where
     loop = do
         mbs <- rcb
         case mbs of
-            Nothing -> return ()
+            Nothing -> ccb >> return ()
             Just bs -> send lsp bs >> loop
 
 recvToDataWriter :: LSP

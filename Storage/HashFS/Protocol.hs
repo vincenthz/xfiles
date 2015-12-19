@@ -68,6 +68,7 @@ data ProtocolStatus =
     | ProtocolErr ProtocolError
     deriving (Show,Eq)
 
+putCommand :: Command -> C.Packer ()
 putCommand (Command payload verb) = do
     C.putStorable (toLE payload)
     case verb of
@@ -83,6 +84,7 @@ putCommand (Command payload verb) = do
 getPayloadLength :: P.Parser ByteString PayloadLength
 getPayloadLength = fromLE <$> P.takeStorable
 
+getCommand :: P.Parser ByteString Command
 getCommand = do
     payload <- getPayloadLength
     verbTy  <- P.anyByte
@@ -98,6 +100,7 @@ getCommand = do
   where
     takeEntity = P.takeWhile (/= 0)
 
+putAck :: Ack -> C.Packer ()
 putAck a = do
     let v = case a of
                 AckOk       -> 0
