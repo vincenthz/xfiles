@@ -1,28 +1,65 @@
 module Console.Options.Flags
     ( parseFlags
     , FlagDesc(..)
+    , FlagFragments(..)
     , Flag
     , FlagArgValidation(..)
     , FlagArgDesc(..)
     , FlagError(..)
+    -- * fragments
+    , FlagFrag(..)
+    , flattenFragments
     ) where
 
 import Control.Applicative
 import Control.Monad
 import Console.Options.Nid
 import Data.List
+import Data.Monoid
 
 data FlagArgValidation = FlagArgValid | FlagArgInvalid String
 
 -- | How to parse a specific flag
 data FlagDesc = FlagDesc
-    { flagShort         :: Maybe Char             -- ^ short flag parser 'o'
-    , flagLong          :: Maybe String           -- ^ long flag "flag"
-    , flagDescription   :: Maybe String           -- ^ description of this flag
+    { flagFragments     :: FlagFragments
     , flagNid           :: Nid                    -- ^ flag number. internal value
     , flagArg           :: FlagArgDesc            -- ^ parser for the argument to an flag
     , flagArgValidate   :: String -> FlagArgValidation -- ^ if the argument doesn't validate, return the error message associated, otherwise Nothing
     }
+
+data FlagFrag =
+      FlagShort       Char
+    | FlagLong        String
+    | FlagDescription String
+    -- | FlagDefault     String
+    | FlagMany        [FlagFrag]
+    deriving (Show,Eq)
+
+data FlagFragments = FlagFragments
+    { flagShort         :: Maybe Char             -- ^ short flag parser 'o'
+    , flagLong          :: Maybe String           -- ^ long flag "flag"
+    , flagDescription   :: Maybe String           -- ^ Description of this "flag"
+    --, flagDefault       :: Maybe String           -- ^ Has a default
+    }
+
+flattenFragments :: FlagFrag -> FlagFragments
+flattenFragments frags =
+    foldl' flat startVal $ case frags of
+                                FlagMany l -> l
+                                _          -> [frags]
+  where
+    startVal = FlagFragments Nothing Nothing Nothing
+    flat ff  (FlagShort f)       = ff { flagShort = Just f }
+    flat ff  (FlagLong f)        = ff { flagLong = Just f }
+    flat ff  (FlagDescription f) = ff { flagDescription = Just f }
+    flat acc (FlagMany l)        = foldl' flat acc l
+
+instance Monoid FlagFrag where
+    mempty                              = FlagMany []
+    mappend (FlagMany l1) (FlagMany l2) = FlagMany (l1 ++ l2)
+    mappend (FlagMany l1) o             = FlagMany (l1 ++ [o])
+    mappend o             (FlagMany l2) = FlagMany (o : l2)
+    mappend o1            o2            = FlagMany [o1,o2]
 
 -- | Whether a flag has an argument, an optional one or always an argument
 data FlagArgDesc =
@@ -33,7 +70,7 @@ data FlagArgDesc =
 
 data Matching a = NoMatching | Matching a | MatchingWithArg a String
 
--- | the state of parsing
+-- | the state of parsing the command line arguments
 data ParseState a = ParseState [Flag]      -- Args : in reverse order
                                [String]    -- Unparsed: in reverse order
                                [FlagError] -- errors: in reverse order
@@ -93,8 +130,8 @@ parseFlags flagParsers = loop (ParseState [] [] []) [1..]
         findShort short = findRetArg (flagShortMatch short) flagParsers
         findLong long = findRetArg (flagLongMatch long) flagParsers
 
-        flagShortMatch toMatch opt = maybe NoMatching (\x -> if x == toMatch then Matching opt else NoMatching) $ flagShort opt
-        flagLongMatch toMatch opt = maybe NoMatching match $ flagLong opt
+        flagShortMatch toMatch opt = maybe NoMatching (\x -> if x == toMatch then Matching opt else NoMatching) $ flagShort $ flagFragments opt
+        flagLongMatch toMatch opt = maybe NoMatching match $ flagLong $ flagFragments opt
           where match optLong
                     | leftPart == optLong && null rightPart           = Matching opt
                     | leftPart == optLong && isPrefixOf "=" rightPart = MatchingWithArg opt (drop 1 rightPart)

@@ -19,6 +19,8 @@ import           System.Directory
 import           Tools.ChronoFs (showSZ)
 import           Tools.Utils
 
+import qualified Paths_xfiles
+
 data Format = Image | ExeLibObj | Music | Video | Text | Document | Other
     deriving (Show,Eq,Bounded,Enum)
 
@@ -197,7 +199,8 @@ main = do
     defaultMain $ do
         programName "xdu"
         programDescription "interactive and detailed disk usage reporting"
-        detailedFlag <- flag 'd' "detailed"
+        programVersion (Paths_xfiles.version)
+        detailedFlag <- flag $ FlagShort 'd' <> FlagLong "detailed"
         allArgs      <- remainingArguments "FILE"
         action $ \flags args ->
             xdu term

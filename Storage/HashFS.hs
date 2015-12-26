@@ -66,7 +66,10 @@ data ProviderPerm =
 -- | Provider backends : local, or remote
 data ProviderBackend h =
       ProviderLocal (HashFSConf h)
-    | ProviderRemote Int
+    | ProviderRemote Remote
+    deriving (Show,Eq)
+
+data Remote = RemoteNative
     deriving (Show,Eq)
 
 hashFileContext :: HashAlgorithm h => FilePath -> IO (Digest h)
@@ -113,7 +116,7 @@ importInto provider importType filePath =
 
 -- | Import a file into a provider with a specific digest value
 importIntoAt :: HashAlgorithm h => Provider h -> Local.ImportType -> Digest h -> FilePath -> IO ()
-importIntoAt = undefined
+importIntoAt = error "importIntoAt not implemented"
 
 -- | Push from @sourceProvider@ to @destProvider, the data associated with @digest@
 pushFromTo :: HashAlgorithm h

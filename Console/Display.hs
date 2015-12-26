@@ -17,13 +17,22 @@ module Console.Display
     , Color(..)
     , OutputElem(..)
     , termText
+    -- * Table
+    , Justify(..)
+    , Table
+    , Column
+    , columnNew
+    , tableCreate
+    , tableHeaders
+    , tableAppend
     ) where
 
 import           Control.Applicative
 import           Control.Monad
-import           Control.Concurrent.MVar 
+import           Control.Concurrent.MVar
 import           System.Console.Terminfo
 import           System.IO
+import           Data.List
 
 {-
 data LineWidget =
@@ -188,3 +197,94 @@ summary tdisp@(TerminalDisplay cf term) = do
 summarySet :: Summary -> [OutputElem] -> IO ()
 summarySet (Summary backend) output = do
     backend output
+
+data Justify = JustifyLeft | JustifyRight
+
+{-
+data Attr = Attr
+    { attrHasSize    :: Maybe Int
+    , attrHasJustify :: Maybe Justify
+    , attrHasColor   :: Maybe Color
+    , attrHasBgColor :: Maybe Color
+    , attrText       :: String
+    }
+
+instance Monoid Attr where
+    mempty = Attr Nothing Nothing Nothing Nothing ""
+    mappend a1 a2 =
+        Attr { attrHasSize    = attrHasSize a2
+             , attrHasJustify = attrHasJustify a2
+             , attrHasColor   = attrHasColor a2
+             , attrHasBgColor = attrHasBgColor a2
+             , attrText       = attrText a1 ++ attrText a2
+             }
+
+attrColor :: Color -> Attr -> Attr
+attrColor c a = a { attrHasColor = Just c }
+
+attrSize :: Int -> Attr -> Attr
+attrSize 0 a = a { attrHasSize = Nothing }
+attrSize n a = a { attrHasSize = Just n }
+
+attrJustify :: Justify -> Attr -> Attr
+attrJustify j a = a { attrHasJustify = Just j }
+
+text :: String -> Attr
+text s = mempty { attrText = s }
+
+toElem :: Attr -> [OutputElem]
+toElem attr =
+    let j = case attrHasSize attr of
+            Just n ->
+                case attrHasJustify attr of
+                    Nothing           -> [LeftT n " "]
+                    Just JustifyLeft  -> [LeftT n " "]
+                    Just JustifyRight -> [RightT n " "]
+            Nothing ->
+                []
+        fwc = case attrHasColor attr of
+                    Nothing -> []
+                    Just c  -> [Fg c]
+        bgc = case attrHasBgColor attr of
+                    Nothing -> []
+                    Just c  -> [Bg c]
+     in mconcat [j,fwc,bgc, [T $ attrText attr,NA]]
+-}
+
+-- column
+data Column = Column
+    { columnSize    :: Int
+    , columnName    :: String
+    , columnJustify :: Justify
+    , columnWrap    :: Bool
+    }
+
+columnNew :: Int -> String -> Column
+columnNew n name = Column n name JustifyLeft False
+
+data Table = Table
+    { tColumns     :: [Column]
+    , rowSeparator :: String
+    }
+
+tableCreate :: [Column] -> Table
+tableCreate cols = Table { tColumns = cols, rowSeparator = "" }
+
+tableHeaders :: TerminalDisplay -> Table -> IO ()
+tableHeaders td t =
+    tableAppend td t $ map columnName $ tColumns t
+
+tableAppend :: TerminalDisplay -> Table -> [String] -> IO ()
+tableAppend td (Table cols rowSep) l = do
+    let disp = case compare (length l) (length cols) of
+                        LT -> zip cols (l ++ replicate (length cols - length l) "")
+                        _  -> zip cols l
+    mapM_ printColRow $ intersperse Nothing $ map Just disp
+  where
+    printColRow Nothing =
+        display td [T $ rowSep]
+    printColRow (Just (c, fieldElement)) = do
+        let oe = case columnJustify c of
+                   JustifyLeft  -> RightT (columnSize c) fieldElement
+                   JustifyRight -> LeftT (columnSize c) fieldElement
+        display td [oe,T "\n"]

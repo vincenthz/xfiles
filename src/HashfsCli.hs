@@ -7,6 +7,7 @@ import           Control.Monad
 import           Control.Concurrent
 import           Text.Read
 import           Data.Maybe
+import           Data.Monoid
 import qualified Crypto.PubKey.Ed25519 as Ed25519
 import           Crypto.Error
 import qualified Tools.Config as Config
@@ -24,26 +25,44 @@ import           Storage.Utils
 
 import           Hashfs.Common
 
-main = do
-    let serverAddr = "127.0.0.1"
-        serverPort = 2902
+import           Console.Options
 
-    a <- getArgs
+serverAddr :: String
+serverAddr = "127.0.0.1"
 
-    key <- readKeyFile "client.priv"
-    let servKey = parsePublicKeyHex (a !! 0)
-    
-    let conCfg = ConnectionConfig
-            { concfgHostname    = serverAddr
-            , concfgPort        = serverPort
-            , concfgExpectedKey = servKey
-            , concfgMyKey       = key
-            }
-    client <- clientNew conCfg
-    clientEstablish client
-    putStrLn ("connected to server on port " ++ show serverPort)
+serverPort :: Int
+serverPort = 2902
 
-    -- FIXME do something
+main = defaultMain $ do
+    programName "hashfs-cli"
+    programDescription "hashfs -- command line interface"
 
-    clientShut client
-    return ()
+    cfgFlag <- flag $ FlagLong "config"
+                   <> FlagShort 'c'
+                   <> FlagDescription "client configuration to use (default \"client.priv\")"
+                   -- <> FlagDefault "client.priv"
+                   -- <> FlagArg ""
+
+    command "replicate" $ do
+        serverFlag <- flag $ FlagLong "server"
+        serverKey  <- flag $ FlagLong "server-key"
+        action $ \_ _ -> do
+            key <- readKeyFile "client.priv"
+            --a <- getArgs
+            let a = [""]
+            let servKey = parsePublicKeyHex (a !! 0)
+
+            let conCfg = ConnectionConfig
+                    { concfgHostname    = serverAddr
+                    , concfgPort        = serverPort
+                    , concfgExpectedKey = servKey
+                    , concfgMyKey       = key
+                    }
+            client <- clientNew conCfg
+            clientEstablish client
+            putStrLn ("connected to server on port " ++ show serverPort)
+
+            -- FIXME do something
+
+            clientShut client
+            return ()

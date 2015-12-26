@@ -9,9 +9,11 @@ module Console.Options
     , defaultMainWith
     -- * Description
     , programName
+    , programVersion
     , programDescription
     , command
     , flag
+    , FlagFrag(..)
     , flagArg
     , conflict
     , argument
@@ -36,6 +38,10 @@ import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Control.Monad.State
+import           Control.Monad.Writer
+
+import           Data.List
+import           Data.Version
 
 import           System.Environment (getArgs, getProgName)
 import           System.Exit
@@ -75,16 +81,40 @@ defaultMain dsl = getArgs >>= defaultMainWith dsl
 defaultMainWith :: OptionDesc () -> [String] -> IO ()
 defaultMainWith dsl args = do
     let descState = gatherDesc dsl
-    progName  <- maybe getProgName return $ stName descState
-    let progDescription = maybe "" id $ stDescription descState
-    runOptions progName progDescription (stCT descState) args
+    runOptions (stMeta descState) (stCT descState) args
 
-runOptions :: String   -- program name
-           -> String   -- program description
+--helpSubcommand :: [String] -> IO ()
+
+help :: ProgramMeta -> Command -> IO ()
+help pmeta (Command hier _ commandOpts _) = mapM_ putStrLn . lines $ snd $ runWriter $ do
+    tell (maybe "<program>" id (programMetaName pmeta) ++ " version " ++ maybe "<undefined>" id (programMetaVersion pmeta) ++ "\n")
+    tell "\n"
+    maybe (return ()) (\d -> tell d >> tell "\n\n") (programMetaDescription pmeta)
+    tell "Options:\n"
+    tell "\n"
+    mapM_ (tell . printOpt) commandOpts
+    case hier of
+        CommandTree subs -> do
+            mapM_ (tell . indent 4 . fst) subs
+        CommandLeaf _    ->
+            return ()
+  where
+    printOpt fd =
+        let optShort = maybe (replicate 2 ' ') (\c -> "-" ++ [c]) $ flagShort ff
+            optLong  = maybe (replicate 8 ' ') (\s -> "--" ++ s) $ flagLong ff
+            optDesc  = maybe "" id $ flagDescription ff
+         in indent 2 $ intercalate " " [optShort, optLong, optDesc] ++ "\n"
+      where
+        ff = flagFragments fd
+
+runOptions :: ProgramMeta
            -> Command  -- commands
            -> [String] -- arguments
            -> IO ()
-runOptions _ _ ct = go [] ct
+runOptions pmeta ct allArgs
+    | "--help" `elem` allArgs = help pmeta ct
+    | "-h" `elem` allArgs     = help pmeta ct
+    | otherwise               = go [] ct allArgs
   where
         -- parse recursively using a Command structure
         go :: [[F.Flag]] -> Command -> [String] -> IO ()
@@ -126,7 +156,7 @@ runOptions _ _ ct = go [] ct
             v _   ((ArgumentCatchAll {}):_ ) = Left "arguments expected after remainingArguments"
 
         showOptionError (FlagError opt i s) = do
-            let optName = (maybe "" (:[]) $ flagShort opt) ++ " " ++ (maybe "" id $ flagLong opt)
+            let optName = (maybe "" (:[]) $ flagShort $ flagFragments opt) ++ " " ++ (maybe "" id $ flagLong $ flagFragments opt)
             hPutErrLn ("error: " ++ show i ++ " option " ++ optName ++ " : " ++ s)
 
         errorUnnamedArgument err = do
@@ -149,16 +179,20 @@ runOptions _ _ ct = go [] ct
                 ] ++ map (indent 4 . fst) subs
             exitFailure
 
-        indent :: Int -> String -> String
-        indent n s = replicate n ' ' ++ s
+indent :: Int -> String -> String
+indent n s = replicate n ' ' ++ s
 
 -- | Set the program name
 programName :: String -> OptionDesc ()
-programName s = modify $ \st -> st { stName = Just s }
+programName s = modify $ \st -> st { stMeta = (stMeta st) { programMetaName = Just s } }
+
+-- | Set the program version
+programVersion :: Version -> OptionDesc ()
+programVersion s = modify $ \st -> st { stMeta = (stMeta st) { programMetaVersion = Just $ showVersion s } }
 
 -- | Set the program description
 programDescription :: String -> OptionDesc ()
-programDescription s = modify $ \st -> st { stDescription = Just s }
+programDescription s = modify $ \st -> st { stMeta = (stMeta st) { programMetaDescription = Just s } }
 
 -- | Set the description for a command
 description :: String -> OptionDesc ()
@@ -188,14 +222,14 @@ action ioAct = modify $ \st -> st { stCT = setAction ioAct (stCT st) }
 -- | Flag option either of the form -short or --long
 --
 -- for flag that doesn't have parameter, use 'flag'
-flagArg :: Char -> String -> FlagParser a -> OptionDesc (Flag a)
-flagArg short long fp = do
+flagArg :: FlagFrag -> FlagParser a -> OptionDesc (Flag a)
+flagArg frag fp = do
     nid <- getNextID
 
+    let fragmentFlatten = flattenFragments frag
+
     let opt = FlagDesc
-                { flagShort       = Just short
-                , flagLong        = Just long
-                , flagDescription = Nothing
+                { flagFragments   = fragmentFlatten
                 , flagNid         = nid
                 , F.flagArg       = argp
                 , flagArgValidate = validator
@@ -219,14 +253,14 @@ flagArg short long fp = do
 -- | Flag option either of the form -short or --long
 --
 -- for flag that expect a value (optional or mandatory), uses 'flagArg'
-flag :: Char -> String -> OptionDesc (Flag Bool)
-flag short long = do
+flag :: FlagFrag -> OptionDesc (Flag Bool)
+flag frag = do
     nid <- getNextID
 
+    let fragmentFlatten = flattenFragments frag
+
     let opt = FlagDesc
-                { flagShort       = Just short
-                , flagLong        = Just long
-                , flagDescription = Nothing
+                { flagFragments   = fragmentFlatten
                 , flagNid         = nid
                 , F.flagArg       = FlagArgNone
                 , flagArgValidate = error ""

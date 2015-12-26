@@ -2,6 +2,7 @@
 {-# LANGUAGE Rank2Types #-}
 module Console.Options.Monad
     ( ProgramDesc(..)
+    , ProgramMeta(..)
     , OptionDesc
     , gatherDesc
     , getNextID
@@ -18,12 +19,21 @@ import           System.Exit
 -- the current state of the program description
 -- as the monad unfold ..
 data ProgramDesc = ProgramDesc
-    { stName        :: Maybe String  -- program name
-    , stDescription :: Maybe String  -- program description
+    { stMeta        :: ProgramMeta
     , stCT          :: Command       -- the command
     , stNextID      :: !NidGenerator -- next id for flag
     , stNextIndex   :: !UnnamedIndex -- next index for unnamed argument
     }
+
+data ProgramMeta = ProgramMeta
+    { programMetaName        :: Maybe String
+    , programMetaDescription :: Maybe String
+    , programMetaVersion     :: Maybe String
+    , programMetaHelp        :: [String]
+    }
+
+programMetaDefault :: ProgramMeta
+programMetaDefault = ProgramMeta Nothing Nothing Nothing ["-h", "--help"]
 
 newtype OptionDesc a = OptionDesc { runOptionDesc :: StateT ProgramDesc Identity a }
     deriving (Functor,Applicative,Monad,MonadState ProgramDesc)
@@ -32,8 +42,7 @@ gatherDesc :: OptionDesc a -> ProgramDesc
 gatherDesc dsl = runIdentity $ execStateT (runOptionDesc dsl) initialProgramDesc
 
 initialProgramDesc :: ProgramDesc
-initialProgramDesc = ProgramDesc { stName        = Nothing
-                                 , stDescription = Nothing
+initialProgramDesc = ProgramDesc { stMeta        = programMetaDefault
                                  , stCT          = iniCommand
                                  , stNextID      = nidGenerator
                                  , stNextIndex   = 0

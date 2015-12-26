@@ -29,6 +29,7 @@ data Argument =
 
 data Flag a where
     FlagNoParam      :: Nid -> Flag Bool
+    --FlagLevel        :: Nid -> Flag Int
     FlagParamOpt     :: Nid -> a -> (String -> a) -> Flag a
     FlagParam        :: Nid -> (String -> a) -> Flag a
 
