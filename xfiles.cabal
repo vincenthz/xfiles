@@ -185,6 +185,7 @@ Executable           xdu
   Buildable:         True
   default-language:  Haskell2010
 
+
 Executable           quarry
   Main-Is:           Quarry.hs
   Hs-Source-Dirs:    src
@@ -193,7 +194,7 @@ Executable           quarry
                    , mtl
                    , process
                    , xfiles
-  Buildable:         True
+  Buildable:         False
   default-language:  Haskell2010
 
 Executable           hashfs-cli

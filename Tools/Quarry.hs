@@ -3,6 +3,7 @@
 {-# LANGUAGE Rank2Types #-}
 module Tools.Quarry
     ( initialize
+    , withQuarry
     -- * Types
     , KeyCategory
     , KeyTag
@@ -105,6 +106,21 @@ initialize hashAlg root provs = do
     cache <- emptyCache
     return $ QuarryConfig { hash = hashAlg, connection = conn, providers = provs, cacheTags = cache }
   --where quarryHashFSConf = HFS.makeConfSHA512 [2] HFS.OutputHex root
+
+withQuarry :: HashAlgorithm h
+           => h
+           -> FilePath         -- ^ The filepath of the database
+           -> [HFS.Provider h]
+           -> (QuarryConfig h -> IO a)
+           -> IO a
+withQuarry hashAlg root provs f = do
+    dbExist <- doesFileExist (dbFile root)
+    conn <- connectSqlite3 (dbFile root)
+    unless dbExist $ dbCreateTables conn
+    cache <- emptyCache
+    let cfg = QuarryConfig { hash = hashAlg, connection = conn, providers = provs, cacheTags = cache }
+    f cfg
+
 
 -- | Import an element into quarry and returns the digest associated
 -- and if the element has been created or updated.
