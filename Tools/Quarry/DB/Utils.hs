@@ -1,6 +1,7 @@
 module Tools.Quarry.DB.Utils
     where
 
+import Crypto.Hash (HashAlgorithm)
 import Tools.Quarry.Types
 import Tools.Quarry.Monad
 import Tools.Quarry.Config
@@ -12,7 +13,7 @@ import Data.List (intercalate)
 import qualified Storage.HashFS as HFS
 
 -- | execute something on a DB
-withDB :: (QuarryDB -> QuarryM a) -> QuarryM a
+withDB :: (QuarryDB -> QuarryM h a) -> QuarryM h a
 withDB f = ask >>= \conf -> f (connection conf)
 
 -- | run a query
@@ -20,14 +21,14 @@ run_ :: (Functor m, MonadIO m) => QuarryDB -> String -> [SqlValue] -> m ()
 run_ conn query args = void $ liftIO $ run conn query args
 
 -- | commit database queries
-dbCommit :: QuarryM ()
+dbCommit :: QuarryM h ()
 dbCommit = withDB $ \conn -> liftIO (commit conn)
 
 -- FIXME probably no need to use the hexadecimal version
-digestToDb :: QuarryDigest -> String
+digestToDb :: QuarryDigest h -> String
 digestToDb = show
 
-digestFromDb :: String -> QuarryDigest
+digestFromDb :: HashAlgorithm h => String -> QuarryDigest h
 digestFromDb = maybe (error "from db not a valid digest") id . HFS.inputDigest HFS.OutputHex
 
 sqlSelect :: String -> String -> Maybe String -> String

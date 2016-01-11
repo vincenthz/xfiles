@@ -14,19 +14,23 @@ module Storage.HashFS.Hasher
     , hashFile
     , digestFromByteString
     -- * Specific algorithm
+    , SHA224(..)
     , SHA256(..)
     , SHA512(..)
+    , Blake2s_224(..)
+    , Blake2s_256(..)
     ) where
 
 import           Crypto.Hash
+import           Data.Char (toLower)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as L
 
 newtype Hasher h = Hasher h
     deriving (Eq)
 
-instance Show (Hasher h) where
-    show _ = "hasher"
+instance Show h => Show (Hasher h) where
+    show (Hasher a) = map toLower $ show a
 
 hasherInit :: HashAlgorithm h => h -> Hasher h
 hasherInit = Hasher

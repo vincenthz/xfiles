@@ -1,9 +1,9 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE Rank2Types #-}
 module Storage.HashFS
     (
       HashFSConf(..)
     , makeConf
-    , makeConfContext
     , makeConfSHA256
     , makeConfSHA512
     , OutputDesc(..)
@@ -11,8 +11,9 @@ module Storage.HashFS
     , inputDigest
     , hashFile
     , hashFileContext
-    , initializeLocally
+    , withConfig
     {-
+    , initializeLocally
     , onDigestFile
     -- * Local
     , deleteFile
@@ -30,6 +31,7 @@ module Storage.HashFS
     , find
     , findAll
     , exists
+    , deleteFrom
     , pushFromTo
     -- * Providers
     , Providers
@@ -38,13 +40,15 @@ module Storage.HashFS
     , ProviderBackend(..)
     ) where
 
+import           System.Directory
 import           Control.Monad
 import           Storage.HashFS.Types
 import           Storage.HashFS.Path
 import           Storage.HashFS.Utils
 import           Storage.HashFS.Hasher
 import           Storage.HashFS.IO
-import           Storage.HashFS.Local (makeConf, makeConfContext, makeConfSHA512, makeConfSHA256)
+import           Storage.HashFS.ConfigFile
+import           Storage.HashFS.Local (makeConf, makeConfSHA512, makeConfSHA256)
 import qualified Storage.HashFS.Local as Local
 
 -- | List of Providers
@@ -52,9 +56,10 @@ type Providers h = [Provider h]
 
 -- | Generic Provider
 data Provider h = Provider
-    { providerName    :: String
-    , providerPerm    :: ProviderPerm
-    , providerBackend :: ProviderBackend h
+    { providerName        :: String
+    , providerDescription :: Maybe String
+    , providerPerm        :: ProviderPerm
+    , providerBackend     :: ProviderBackend h
     } deriving (Show,Eq)
 
 -- | Provider permission ability: ReadOnly or ReadWrite
@@ -75,11 +80,52 @@ data Remote = RemoteNative
 hashFileContext :: HashAlgorithm h => FilePath -> IO (Digest h)
 hashFileContext = undefined
 
-initializeLocally :: HashAlgorithm h => String -> FilePath -> IO (Provider h)
+withConfig :: (forall h . (Show h, HashAlgorithm h) => [Provider h] -> IO ()) -> IO ()
+withConfig f = do
+    mcfg <- readSystem
+    case mcfg of
+        Nothing  -> error "no config file. you need to create a \".hashfs/config\" in your home directory"
+        Just cfg -> do
+            let dbs = configDbs cfg
+            case digestAlgorithm $ configDigest cfg of
+                "sha224"     -> f =<< mapM (toProvider SHA224) dbs
+                "sha256"     -> f =<< mapM (toProvider SHA256) dbs
+                "blake2-224" -> f =<< mapM (toProvider Blake2s_224) dbs
+                unknown      -> error $ "unknown hash: " ++ unknown
+  where
+    toProvider :: (Show h, HashAlgorithm h) => h -> ConfigDb -> IO (Provider h)
+    toProvider hashAlg cdb = do
+        case configDbType cdb of
+            "local" -> do
+                let confPath = configDbPath cdb
+                path <- normalizeLocalPath confPath
+                -- check if the directory exists, if not create it
+                exist <- doesDirectoryExist path
+                unless exist $ createDirectoryIfMissing True path
+                -- check if the directory is empty, if not initialize a local database
+                isEmpty <- isEmptyDirectory path
+
+                providerLocalConf <- if isEmpty
+                        then do
+                            let conf = Local.makeConf [2,1] (hasherInit hashAlg) OutputBase32 path
+                            Local.initialize conf
+                            return conf
+                        else
+                            Local.start hashAlg path
+
+                return $ Provider (configDbName cdb)
+                                  (configDbDescription cdb)
+                                  ReadWrite
+                                  (ProviderLocal providerLocalConf)
+            unknown -> error ("unknown database type: " ++ unknown)
+
+{-
+initializeLocally :: (Show h, HashAlgorithm h) => String -> FilePath -> IO (Provider h)
 initializeLocally n fp = do
-    let conf = Local.makeConfContext [2] OutputBase32 fp
+    let conf = Local.makeConfContext [2,1] OutputBase32 fp
     Local.initialize conf
-    return $ Provider n ReadWrite (ProviderLocal conf)
+    return $ Provider n Nothing ReadWrite (ProviderLocal conf)
+    -}
 
 existsIn :: HashAlgorithm h => ProviderBackend h -> Digest h -> IO Bool
 existsIn (ProviderLocal conf) digest = Local.exists conf digest
@@ -118,8 +164,22 @@ importInto provider importType filePath =
 importIntoAt :: HashAlgorithm h => Provider h -> Local.ImportType -> Digest h -> FilePath -> IO ()
 importIntoAt = error "importIntoAt not implemented"
 
+deleteFrom :: HashAlgorithm h
+           => Provider h
+           -> Digest h
+           -> IO ()
+deleteFrom provider digest = do
+    case providerBackend provider of
+        ProviderLocal dLocal   -> localDelete dLocal
+        ProviderRemote dRemote -> remoteDelete dRemote
+  where
+    localDelete conf =
+        Local.deleteFile conf digest
+    remoteDelete _ =
+        error "remote delete not implemented"
+
 -- | Push from @sourceProvider@ to @destProvider, the data associated with @digest@
-pushFromTo :: HashAlgorithm h
+pushFromTo :: (Show h, HashAlgorithm h)
            => Provider h -- ^ destination provider
            -> Provider h -- ^ source provider
            -> Digest h   -- ^ digest to push to destination

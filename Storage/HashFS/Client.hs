@@ -8,6 +8,7 @@ module Storage.HashFS.Client
     , clientShut
     , clientSendData
     , clientRecvDataDigest
+    --, clientEnumerate
     ) where
 
 import           Control.Concurrent.MVar
@@ -70,6 +71,21 @@ clientRecvDataDigest conn entityId expectedDigest (DataWriterDigest wcb fcb) =
                 computedDigest <- recvSizeDigest lsp payloadLength wcb
                 fcb $ if computedDigest == expectedDigest then Just expectedDigest else Nothing
                 return ProtocolOK
+
+{-
+clientEnumerate :: HashAlgorithm h
+                => Client
+                -> ByteString
+                -> IO ProtocolStatus
+clientEnumerate conn prefix = do
+    withClient conn $ \lsp -> do
+        sendCommand lsp (Command 0 $ Enumerate prefix)
+        r <- expectAckSize <$> waitAck lsp
+        case r of
+            Left err        -> return $ ProtocolErr err
+            Right arrLength ->
+                recv
+-}
 
 expectAck :: Ack -> Either ProtocolError ()
 expectAck (AckOk)      = Right ()

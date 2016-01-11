@@ -14,7 +14,7 @@ import Database.HDBC
 -- | Create a specific tag
 --
 -- will check if tag already exists
-dbCreateTag :: Tag -> QuarryM KeyTag
+dbCreateTag :: Tag -> QuarryM h KeyTag
 dbCreateTag tag = do
     mt <- dbFindTag tag
     case mt of
@@ -31,7 +31,7 @@ dbCreateTag tag = do
 --
 -- will check if category already exists.
 -- will always create an abstract category
-dbCreateCategory :: Category -> QuarryM KeyCategory
+dbCreateCategory :: Category -> QuarryM h KeyCategory
 dbCreateCategory cat = do
     mt <- dbFindCategory cat
     case mt of
@@ -44,7 +44,7 @@ dbCreateCategory cat = do
 -- | Try to find the key associated to a Tag
 --
 -- fix SQL escape
-dbFindTag :: Tag -> QuarryM (Maybe KeyTag)
+dbFindTag :: Tag -> QuarryM h (Maybe KeyTag)
 dbFindTag tag = do
     mcat <- dbFindCategory (tagCat tag)
     case mcat of
@@ -56,7 +56,7 @@ dbFindTag tag = do
                 [[uid]] -> return $ Just $ KeyTag $ fromSql uid
                 _       -> error ("dbFindTag: " ++ show tag ++ " unexpected sql output format " ++ show r)
 
-dbFindCategory :: Category -> QuarryM (Maybe KeyCategory)
+dbFindCategory :: Category -> QuarryM h (Maybe KeyCategory)
 dbFindCategory cat = withDB $ \conn -> do
     r <- liftIO $ quickQuery conn ("SELECT id FROM category WHERE name='" ++ cat ++ "'") []
     case r of
@@ -64,7 +64,7 @@ dbFindCategory cat = withDB $ \conn -> do
         [[uid]] -> return $ Just $ KeyCategory $ fromSql uid
         _       -> error ("dbFindCategory: " ++ show cat ++ " unexpected sql output format " ++ show r)
 
-dbGetCategories :: QuarryM [(KeyCategory, (Category, Bool))]
+dbGetCategories :: QuarryM h [(KeyCategory, (Category, Bool))]
 dbGetCategories = withDB $ \conn -> liftIO $ getTableMap conn tableCategory KeyCategory toVal
   where toVal [name,abstr] = (fromSql name, fromSql abstr)
         toVal r            = error $ "unexpected value in category table: " ++ show r

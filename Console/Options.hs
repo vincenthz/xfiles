@@ -95,7 +95,9 @@ help pmeta (Command hier _ commandOpts _) = mapM_ putStrLn . lines $ snd $ runWr
     mapM_ (tell . printOpt) commandOpts
     case hier of
         CommandTree subs -> do
-            mapM_ (tell . indent 4 . fst) subs
+            tell "\n"
+            tell "Commands:\n"
+            mapM_ (tell . indent 2 . (++ "\n") . fst) subs
         CommandLeaf _    ->
             return ()
   where

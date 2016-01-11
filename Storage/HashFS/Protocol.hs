@@ -7,6 +7,8 @@ module Storage.HashFS.Protocol
     , Verb(..)
     , ProtocolStatus(..)
     , ProtocolError(..)
+    , Arr(..)
+    , Serializable(..)
     , sendCommand
     , waitCommand
     , sendAck
@@ -67,6 +69,23 @@ data ProtocolStatus =
       ProtocolOK
     | ProtocolErr ProtocolError
     deriving (Show,Eq)
+
+data Arr a = Arr
+    { arrLength :: Int -- of element
+    , arrToList :: [a]
+    } deriving (Show,Eq)
+
+--class SerializableConstSize a where
+--    toWireSize :: a -> Int
+
+class Serializable a where
+    toWire     :: a -> C.Packer ()
+    fromWire   :: P.Parser ByteString a
+
+instance Serializable Command where
+    toWire   = putCommand
+    fromWire = getCommand
+
 
 putCommand :: Command -> C.Packer ()
 putCommand (Command payload verb) = do
@@ -182,6 +201,11 @@ waitAck lsp = do
     case P.parse getAck bs of
         P.ParseOK _ cmd -> return cmd
         _               -> E.throwIO AckInvalid
+
+--waitArr :: ConstantSize a => LSP -> IO (Arr a)
+--waitArr lsp = do
+--    bs <- recv lsp
+--waitArrOf :: LSP -> IO (Arr a)
 
 sendCommand :: LSP -> Command -> IO ()
 sendCommand lsp cmd = do

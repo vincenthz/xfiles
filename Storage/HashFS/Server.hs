@@ -104,12 +104,16 @@ serverShut _ = do
     --writeChan ch ()
     return ()
 
+type ProtocolReturn a = IO (Either ProtocolError a)
+
 -- | Server Store is just a naive implementation that does not check any property
 -- of the entity id compared to the data. the entity id may or may not have
 -- relation, and it's very likely this node act like a simple storage node
 data ServerImplStore = ServerImplStore
-    { serverImplGet :: EntityId -> IO (Either ProtocolError (FileSize, DataReader))
-    , serverImplPut :: EntityId -> FileSize -> IO (Either ProtocolError DataWriter)
+    { serverImplGet :: EntityId -> ProtocolReturn (FileSize, DataReader)
+    , serverImplPut :: EntityId -> FileSize -> ProtocolReturn DataWriter
+    , serverImplEnum :: ByteString -> ProtocolReturn (Arr EntityId)
+    , serverImplInfo :: Arr EntityId -> ProtocolReturn (Arr FileSize)
     }
 
 -- | Server Store for trusted implementation. the trusted implementation has a knowledge
@@ -143,7 +147,18 @@ serverProcessCommand impl clientHandle = grab clientHandle $ \lsp -> do
             case r of
                 Left err -> sendAckErr lsp err
                 Right dw -> recvToDataWriter lsp payload dw
+{-
+        Enum prefix -> do
+            r <- (serverImplEnum impl) prefix
+            case r of
+                Left err   -> sendAckErr lsp err
+                Right ents -> do
+                    sendAck lsp (AckSize 0)
+        Info elems -> do
+            sendAck lsp (AckOk)
+-}
         _       -> sendAckErr lsp Unsupported
+  where
 
 sendAckErr :: LSP -> ProtocolError -> IO ()
 sendAckErr lsp perr = sendAck lsp (AckErr perr)

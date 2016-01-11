@@ -12,9 +12,12 @@ data ConfigListen = ConfigListen
     } deriving (Show,Eq)
 
 data ConfigDb = ConfigDb
-    { listenDbType :: String
-    , listenDbPath :: String
-    , listenDbKey  :: Maybe FilePath
+    { configDbName        :: String
+    , configDbType        :: String
+    , configDbPath        :: String
+    , configDbDescription :: Maybe String
+    , configDbKey         :: Maybe FilePath
+    , configPreferredExts :: [String]
     } deriving (Show,Eq)
 
 data ConfigDigest = ConfigDigest
@@ -35,16 +38,19 @@ readAt fp = do
     parseCfg cs =
         let dbs = getAllSections cs "db"
          in ConfigFile
-                { configListen = Nothing 
+                { configListen = Nothing
                 , configDigest = parseDigest cs
                 , configDbs    = catMaybes $ map parseDbs dbs
                 }
     parseDbs kvs =
-        case map (kvsGet kvs) ["type", "path"] of
-            [Just ty, Just pa] ->
-                Just $ ConfigDb { listenDbType = ty
-                                , listenDbPath = pa
-                                , listenDbKey  = kvsGet kvs "key"
+        case map (kvsGet kvs) ["type", "path", "name"] of
+            [Just ty, Just pa, Just na] ->
+                Just $ ConfigDb { configDbName = na
+                                , configDbType = ty
+                                , configDbPath = pa
+                                , configDbKey  = kvsGet kvs "key"
+                                , configDbDescription = kvsGet kvs "description"
+                                , configPreferredExts = maybe [] words $ kvsGet kvs "preferred-exts"
                                 }
             _                  ->
                 Nothing
@@ -53,9 +59,9 @@ readAt fp = do
          in ConfigDigest
                 { digestAlgorithm = maybe "sha256" id alg
                 }
-                
+
 
 readSystem :: IO (Maybe ConfigFile)
 readSystem = do
     hd <- getHomeDirectory
-    readAt (hd </> ".hashfs.conf")
+    readAt (hd </> ".hashfs" </> "config")

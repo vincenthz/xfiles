@@ -1,6 +1,6 @@
 module Tools.Quarry.Types where
 
-import Crypto.Hash (SHA512, Digest)
+import Crypto.Hash (SHA512, HashAlgorithm, Digest)
 import Data.Word (Word64)
 
 type TagName = String
@@ -15,7 +15,7 @@ data Group = Group { groupDescription :: String }
 instance Show Tag where
     show tag = tagCat tag ++ ":" ++ tagName tag
 
-type QuarryDigest = Digest SHA512
+type QuarryDigest h = Digest h
 
 data QuarryDigestInfo = QuarryDigestInfo
     { diCategory    :: Integer

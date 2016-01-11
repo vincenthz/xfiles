@@ -9,11 +9,12 @@
 --
 {-# LANGUAGE OverloadedStrings #-}
 module Tools.Config
-    ( Config
+    ( Config(..)
     , Section(..)
     , KeyValues
-    -- * reading methods
+    -- * IO methods
     , readConfigPath
+    , writeConfigPath
     -- * Config querying
     , listSections
     , get
@@ -21,6 +22,7 @@ module Tools.Config
     , getAllSections
     -- * KeyValues querying
     , kvsGet
+    , kvsFromList
     ) where
 
 import           Control.Monad
@@ -78,6 +80,16 @@ parseConfig = Config . reverse . toSections . foldl accSections ([], Nothing) . 
 readConfigPath :: FilePath -> IO Config
 readConfigPath filepath = parseConfig <$> readFile filepath
 
+writeConfigPath :: FilePath -> Config -> IO ()
+writeConfigPath filepath config = writeFile filepath (unlines $ concatMap serializeSection $ unConfig config)
+  where
+    serializeSection :: Section -> [String]
+    serializeSection section =
+        ("[" ++ sectionName section ++ "]") : (map serializeLine (unKeyValues $ sectionKVs section) ++ [""])
+    serializeLine :: (Key, Value) -> String
+    serializeLine (key, val) =
+        key ++ " = " ++ val
+
 listSections :: [Config] -> [String]
 listSections = S.toList . foldr accSections S.empty
   where accSections (Config sections) set = foldr S.insert set (map sectionName sections)
@@ -114,3 +126,6 @@ kvsGet :: KeyValues
        -> Key
        -> Maybe Value
 kvsGet (KeyValues kvs) key = lookup key kvs
+
+kvsFromList :: [(Key, Value)] -> KeyValues
+kvsFromList = KeyValues

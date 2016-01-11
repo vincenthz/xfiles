@@ -3,6 +3,8 @@ module Storage.HashFS.Local
 
 import Data.Word (Word64)
 import Data.ByteString (ByteString)
+import Data.Char (toLower)
+import Data.List (find, intercalate)
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
 import Control.Applicative
@@ -23,9 +25,10 @@ import System.Directory (createDirectoryIfMissing, removeFile, doesDirectoryExis
 import System.FilePath ((</>), dropTrailingPathSeparator, dropFileName)
 import System.Posix.Files hiding (isDirectory)
 
+import qualified Tools.Config as Config
 
 -- | Create a configuration
-makeConf :: HashAlgorithm h
+makeConf :: (Show h, HashAlgorithm h)
          => [Int]
          -> Hasher h
          -> OutputDesc
@@ -38,25 +41,13 @@ makeConf depth hasher oDesc rootFs =
                , hashfsRoot       = rootFs
                }
 
-makeConfContext :: HashAlgorithm h
-                => [Int]
-                -> OutputDesc
-                -> FilePath
-                -> HashFSConf h
-makeConfContext depth oDesc rootFs =
-    HashFSConf { hashfsDepth      = depth
-               , hashfsHash       = hasherInitContext
-               , hashfsOutputDesc = oDesc
-               , hashfsRoot       = rootFs
-               }
-
 -- | Create a configuration with SHA256 as the Hash
 makeConfSHA512 :: [Int] -> OutputDesc -> FilePath -> HashFSConf SHA512
-makeConfSHA512 depth = makeConf depth hasherInitContext
+makeConfSHA512 depth = makeConf depth (hasherInit SHA512)
 
 -- | Create a configuration with SHA256 as the Hash
 makeConfSHA256 :: [Int] -> OutputDesc -> FilePath -> HashFSConf SHA256
-makeConfSHA256 depth = makeConf depth hasherInitContext
+makeConfSHA256 depth = makeConf depth (hasherInit SHA256)
 
 -- | Compute the digest according to the HashFSConf of any file
 computeHash :: HashAlgorithm h => HashFSConf h -> FilePath -> IO (Digest h)
@@ -119,15 +110,64 @@ hashFileDataWriter conf = do
     return $ DataWriterDigest put done
 
 -- | initialize ! :)
-initialize :: HashAlgorithm h => HashFSConf h -> IO ()
+initialize :: (Show h, HashAlgorithm h) => HashFSConf h -> IO ()
 initialize conf = do
     let c = hashfsRoot conf
     rootExists <- liftIO $ doesDirectoryExist c
     unless rootExists $ error "hashfs root directory doesn't exist"
     isNull <- null . filter metaDirs <$> liftIO (getDirectoryContents c)
     unless isNull $ error "hashfs root directory isn't empty"
+    createConfFile conf
     return ()
   where metaDirs = not . flip elem [".", ".."]
+
+start :: (Show h, HashAlgorithm h) => h -> FilePath -> IO (HashFSConf h)
+start hashAlg f = do
+    hashfsconf <- readConfFile hashAlg f
+    return hashfsconf
+
+createConfFile :: (Show h, HashAlgorithm h) => HashFSConf h -> IO ()
+createConfFile conf = do
+    Config.writeConfigPath (c </> "config") $
+        Config.Config
+            [ Config.Section "digest" $ Config.kvsFromList
+                [("hash", show $ hashfsHash conf)
+                ]
+            , Config.Section "output" $ Config.kvsFromList
+                [("encoding", map toLower $ drop 6 $ show $ hashfsOutputDesc conf)
+                ,("format", intercalate "," $ map show $ hashfsDepth conf )
+                ]
+            ]
+  where
+    c = hashfsRoot conf
+
+readConfFile :: (Show h, HashAlgorithm h) => h -> FilePath -> IO (HashFSConf h)
+readConfFile h rootPath = do
+    oneCfg <- Config.readConfigPath (rootPath </> "config")
+    let cfg = [oneCfg]
+    case sequence [Config.get cfg "digest" "hash", Config.get cfg "output" "encoding", Config.get cfg "output" "format"] of
+        Just [hash,encoding,format] -> process hash encoding format
+        _                           -> error ("cannot read hashfs repository config at : " ++ rootPath)
+  where
+    process hashStr encoder format
+        | not (hashStr `matchHash ` (show h)) = error ("unexpected hash algorithm: " ++ show hashStr ++ " expected: " ++ (show h))
+        | otherwise                           = do
+            let encoder'    = matchList encoder knownEncoders
+                formatDepth = read ("[" ++ format ++ "]")
+            return $ makeConf formatDepth (hasherInit h) encoder' rootPath
+    knownEncoders =
+        [ ("base16", OutputHex)
+        , ("hex", OutputHex)
+        , ("hexa", OutputHex)
+        , ("base32", OutputBase32)
+        , ("base64", OutputBase64)
+        ]
+    matchList :: String -> [(String, a)] -> a
+    matchList v l =
+        let v' = map toLower v :: String
+         in maybe (error $ "cannot match " ++ v ++ " to any of " ++ show (map fst l)) id $ lookup v' l
+    matchHash v1 v2 =
+        map toLower v1 == map toLower v2
 
 data ImportType = ImportCopy | ImportSymlink | ImportHardlink
     deriving (Show,Eq)

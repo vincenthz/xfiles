@@ -8,12 +8,13 @@ import Tools.Quarry.Types
 import Tools.Quarry.DB.Types
 import Tools.Quarry.Cache
 import Storage.HashFS (Provider)
-import Crypto.Hash (SHA512)
+import Crypto.Hash (HashAlgorithm)
 
 -- | Config
-data QuarryConfig = QuarryConfig
+data QuarryConfig h = QuarryConfig
     { connection :: Connection
-    , hashfsConf :: Provider SHA512
+    , hash       :: h
+    , providers  :: [Provider h]
     , cacheTags  :: CacheTable KeyTag Tag
     }
 

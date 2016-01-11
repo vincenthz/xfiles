@@ -6,11 +6,12 @@ module Tools.Quarry.Monad
 import Control.Applicative
 import Control.Monad.Reader
 import Tools.Quarry.Config
+import Crypto.Hash (HashAlgorithm)
 
 -- | Quarry Monad
-newtype QuarryM a = QuarryM { runQuarryM :: ReaderT QuarryConfig IO a }
-    deriving (Functor, Applicative, Monad, MonadReader QuarryConfig, MonadIO)
+newtype QuarryM h a = QuarryM { runQuarryM :: ReaderT (QuarryConfig h) IO a }
+    deriving (Functor, Applicative, Monad, MonadReader (QuarryConfig h), MonadIO)
 
-runQuarry :: QuarryConfig -> QuarryM a -> IO a
+runQuarry :: (Show h, HashAlgorithm h) => QuarryConfig h -> QuarryM h a -> IO a
 runQuarry conf f =
     runReaderT (runQuarryM f) conf

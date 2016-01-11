@@ -38,6 +38,7 @@ module Tools.Quarry.DB
     , dbCommit
     ) where
 
+import Crypto.Hash (HashAlgorithm)
 import Tools.Quarry.Types
 import Tools.Quarry.Monad
 import Tools.Quarry.DBHelper
@@ -102,7 +103,7 @@ dbCreateTables conn = do
 -- * fix SQL escape
 --
 -- * doesn't work if both Nothing
-dbFindTagsMatching :: Maybe String -> Maybe Category -> QuarryM [(KeyCategory, TagName)]
+dbFindTagsMatching :: Maybe String -> Maybe Category -> QuarryM h [(KeyCategory, TagName)]
 dbFindTagsMatching nameConstraint categoryConstraint = do
     mcat <- maybe (return Nothing) (\x -> dbFindCategory x) categoryConstraint
     withDB $ \conn -> do
@@ -113,18 +114,18 @@ dbFindTagsMatching nameConstraint categoryConstraint = do
                 maybe "" (\k -> " AND category=" ++ show (getPrimaryKey k) ++ "") mcat
 
 -- | add a Tag on some data
-dbAddTag :: KeyData -> KeyTag -> QuarryM ()
+dbAddTag :: KeyData -> KeyTag -> QuarryM h ()
 dbAddTag key tag = withDB $ \conn -> liftIO $ prepare conn query >>= \stmt ->
                                               void $ execute stmt [toSql (getPrimaryKey key),toSql $ getPrimaryKey tag]
   where query = "INSERT INTO tagmap VALUES (?,?)"
 
 -- | Remove a Tag from some data
-dbRemoveTag :: KeyData -> KeyTag -> QuarryM ()
+dbRemoveTag :: KeyData -> KeyTag -> QuarryM h ()
 dbRemoveTag key tag = withDB $ \conn -> run_ conn query []
   where query = "DELETE FROM tagmap WHERE data_id=" ++ show (getPrimaryKey key) ++ " AND tag_id=" ++ show (getPrimaryKey tag)
 
 -- | find digests that are part of every tags specified (intersection)
-dbFindWithTags :: [Tag] -> QuarryM [QuarryDigest]
+dbFindWithTags :: HashAlgorithm h => [Tag] -> QuarryM h [QuarryDigest h]
 dbFindWithTags tags
     | null tags = error "cannot find with no tags"
     | otherwise = do
@@ -147,7 +148,7 @@ dbFindWithTags tags
             , "HAVING COUNT( d.id )=" ++ show (length tags)
             ]
 
-dbResolveDigest :: QuarryDigest -> QuarryM (Maybe KeyData)
+dbResolveDigest :: QuarryDigest h -> QuarryM h (Maybe KeyData)
 dbResolveDigest digest = do
     r <- withDB $ \conn -> liftIO $ quickQuery conn ("SELECT id FROM data WHERE hash='" ++ digestToDb digest ++ "'") []
     case r of
@@ -155,21 +156,21 @@ dbResolveDigest digest = do
         [[uid]] -> return $ Just $ KeyData $ fromSql uid
         _       -> return Nothing
 
-dbResolveKeyData :: KeyData -> QuarryM QuarryDigest
+dbResolveKeyData :: HashAlgorithm h => KeyData -> QuarryM h (QuarryDigest h)
 dbResolveKeyData fk = do
     r <- withDB $ \conn -> liftIO $ quickQuery conn ("SELECT hash FROM data WHERE id=" ++ show (getPrimaryKey fk)) []
     case r of
         [[uid]] -> return $ digestFromDb $ fromSql uid
         _       -> error ("data key " ++ show fk ++ " cannot be resolved")
 
-dbResolveKeyCategory :: KeyCategory -> QuarryM Category
+dbResolveKeyCategory :: KeyCategory -> QuarryM h Category
 dbResolveKeyCategory fk = do
     r <- withDB $ \conn -> liftIO $ quickQuery conn ("SELECT name FROM category WHERE id=" ++ show (getPrimaryKey fk)) []
     case r of
         [[uid]] -> return $ fromSql uid
         _       -> error ("category key " ++ show fk ++ " cannot be resolved")
 
-dbResolveKeyGroup :: KeyGroup -> QuarryM Group
+dbResolveKeyGroup :: KeyGroup -> QuarryM h Group
 dbResolveKeyGroup fk = do
     r <- withDB $ \conn -> liftIO $ quickQuery conn ("SELECT description FROM grp WHERE id=" ++ show (getPrimaryKey fk)) []
     case r of
@@ -177,13 +178,13 @@ dbResolveKeyGroup fk = do
         _        -> error ("group key " ++ show fk ++ " cannot be resolved")
 
 -- | add Digest to known content
-dbAddFile :: QuarryDigest        -- ^ digest
+dbAddFile :: QuarryDigest h      -- ^ digest
           -> DataCategory        -- ^ category of file
           -> FilePath            -- ^ an absolute path
           -> Maybe POSIXTime     -- ^ a date
           -> (Word64, POSIXTime) -- ^ (Size and file Mtime)
           -> QuarryFileType      -- ^ file type
-          -> QuarryM KeyData
+          -> QuarryM h KeyData
 dbAddFile digest dataCat path date (sz,pt) ft
     | isRelative path = error "cannot accept relative path in dbAddFile"
     | otherwise = withDB $ \conn -> do
@@ -204,9 +205,9 @@ dbAddFile digest dataCat path date (sz,pt) ft
   where query = "INSERT INTO data (hash, category, size, mtime, date, itime, dirname, filename, filetype) VALUES (?,?,?,?,?,?,?,?,?)"
 
 -- | Update the description associated with a digest
-dbUpdateDescription :: QuarryDigest -- ^ digest
+dbUpdateDescription :: QuarryDigest h -- ^ digest
                     -> String -- ^ description
-                    -> QuarryM ()
+                    -> QuarryM h ()
 dbUpdateDescription digest description = withDB $ \conn -> do
     liftIO $ do
         stmt <- prepare conn query
@@ -214,8 +215,8 @@ dbUpdateDescription digest description = withDB $ \conn -> do
         return ()
   where query = "UPDATE data SET description=? WHERE hash=?"
 
-dbGetInfo :: QuarryDigest -- ^ Digest
-          -> QuarryM (Maybe QuarryDigestInfo)
+dbGetInfo :: QuarryDigest h -- ^ Digest
+          -> QuarryM h (Maybe QuarryDigestInfo)
 dbGetInfo digest = do
     r <- withDB $ \conn -> liftIO $ quickQuery conn query []
     case r of
