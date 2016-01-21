@@ -74,7 +74,7 @@ runHFS f = ask >>= liftIO . f . providers
 
 -- | Check if the digest already exists in the database
 exist :: (Show h, HashAlgorithm h) => QuarryDigest h -> QuarryM h Bool
-exist digest = runHFS $ \provs -> HFS.exists provs digest
+exist digest = runHFS $ \provs -> HFS.existsDigest provs digest
 
 -- | Compute the digest associated with a file
 computeDigest :: HashAlgorithm h => FilePath -> QuarryM h (QuarryDigest h)

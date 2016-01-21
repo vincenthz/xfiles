@@ -3,10 +3,13 @@ module Main where
 import           Network.Socket hiding (send,recv)
 import           System.Timeout
 import           System.Environment
+import           System.FilePath
+import           System.Exit
 import           Control.Monad
 import           Control.Concurrent
 import           Text.Read
 import           Data.Maybe
+import           Data.List (find)
 import           Data.Monoid
 import qualified Crypto.PubKey.Ed25519 as Ed25519
 import           Crypto.Error
@@ -27,6 +30,7 @@ import           Storage.Utils
 import           Hashfs.Common
 
 import           Console.Options
+import           Console.Display
 
 serverAddr :: String
 serverAddr = "127.0.0.1"
@@ -75,3 +79,39 @@ main = defaultMain $ do
         action $ \_ _ -> do
             withConfig $ \providers -> do
                 mapM_ (putStrLn . show) providers
+    command "import" $ do
+        repoD <- flagArg (   FlagLong "repository"
+                          <> FlagShort 'r'
+                          <> FlagDescription "explicitly specify the repository used for import"
+                         ) (FlagRequired Right)
+        argDescs <- remainingArguments "arguments"
+        action $ \getFlag getArg -> do
+            disp <- displayInit
+            withConfig $ \provs -> do
+                let args = getArg argDescs
+                    repo = getFlag repoD
+
+                forM_ args $ \filePath -> do
+                    let ext = takeExtension filePath
+                    case repo of
+                        Nothing -> do
+                            putStrLn "automatic import routing not implemented"
+                            exitFailure
+                        Just repoName -> do
+                            let prov = findProvider provs repoName
+
+                            expected <- hashFileContext filePath
+
+                            mexist <- findDigest provs expected
+                            case mexist of
+                                Nothing -> do
+                                    d <- importInto prov ImportCopy filePath
+                                    if d /= expected
+                                        then display disp [Fg Red, T "X ", NA, T $ show d, T " ", T filePath, T "\n"]
+                                        else display disp [Fg Green, T "/ ", NA, T $ show d, T " ", T filePath, T "\n"]
+                                Just p  -> do
+                                    display disp [Fg Yellow, T "D ", NA, T $ show expected, T " ", T filePath, T "\n"]
+
+findProvider :: [Provider h] -> String -> Provider h
+findProvider provs name =
+    maybe (error $ "cannot find repository for " ++ name) id $ find (\p -> providerName p == name) provs

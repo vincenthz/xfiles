@@ -28,9 +28,9 @@ module Storage.HashFS
     , importInto
     , importIntoAt
     -- * Generic operations
-    , find
-    , findAll
-    , exists
+    , findDigest
+    , findAllDigest
+    , existsDigest
     , deleteFrom
     , pushFromTo
     -- * Providers
@@ -53,6 +53,13 @@ import qualified Storage.HashFS.Local as Local
 
 -- | List of Providers
 type Providers h = [Provider h]
+
+{-
+data Trunk h = TrunkGroup
+    { trunkGroupProviders    :: [Provider h]
+    , trunkGroupRouting      :: Int
+    }
+-}
 
 -- | Generic Provider
 data Provider h = Provider
@@ -78,7 +85,7 @@ data Remote = RemoteNative
     deriving (Show,Eq)
 
 hashFileContext :: HashAlgorithm h => FilePath -> IO (Digest h)
-hashFileContext = undefined
+hashFileContext fp = hashFile hasherInitContext fp
 
 withConfig :: (forall h . (Show h, HashAlgorithm h) => [Provider h] -> IO ()) -> IO ()
 withConfig f = do
@@ -120,6 +127,15 @@ withConfig f = do
             unknown -> error ("unknown database type: " ++ unknown)
 
 {-
+data Routing = Routing
+    { filepathPrefixes :: FilePath
+    , filepathExtensions :: [String]
+    }
+
+sortBy longest
+-}
+
+{-
 initializeLocally :: (Show h, HashAlgorithm h) => String -> FilePath -> IO (Provider h)
 initializeLocally n fp = do
     let conf = Local.makeConfContext [2,1] OutputBase32 fp
@@ -132,8 +148,8 @@ existsIn (ProviderLocal conf) digest = Local.exists conf digest
 existsIn (ProviderRemote _)   _      = return False
 
 -- | Find if a provider provides the data related to this digest
-find :: HashAlgorithm h => Providers h -> Digest h -> IO (Maybe (Provider h))
-find providers digest = loop providers
+findDigest :: HashAlgorithm h => Providers h -> Digest h -> IO (Maybe (Provider h))
+findDigest providers digest = loop providers
   where
     loop []     = return Nothing
     loop (x:xs) = do
@@ -141,8 +157,8 @@ find providers digest = loop providers
         if r then return (Just x) else loop xs
 
 -- | Find all the providers that provides the data related to this digest
-findAll :: HashAlgorithm h => Providers h -> Digest h -> IO (Providers h)
-findAll providers digest = loop [] providers
+findAllDigest :: HashAlgorithm h => Providers h -> Digest h -> IO (Providers h)
+findAllDigest providers digest = loop [] providers
   where
     loop acc []     = return $ reverse acc
     loop acc (x:xs) = do
@@ -150,8 +166,8 @@ findAll providers digest = loop [] providers
         loop (if r then x : acc else acc) xs
 
 -- | Check if a data related to a digest exists in one of the providers
-exists :: HashAlgorithm h => Providers h -> Digest h -> IO Bool
-exists providers digest = maybe False (const True) <$> find providers digest
+existsDigest :: HashAlgorithm h => Providers h -> Digest h -> IO Bool
+existsDigest providers digest = maybe False (const True) <$> findDigest providers digest
 
 -- | Import a file into a provider and return the digest
 importInto :: HashAlgorithm h => Provider h -> Local.ImportType -> FilePath -> IO (Digest h)
