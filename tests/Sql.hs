@@ -47,7 +47,7 @@ withParameters f = do
     return ()
 
 arbitraryFileContent :: [String]
-arbitraryFileContent = map (replicate 1) ['a'..'z']
+arbitraryFileContent = [ [x,y] | x <- ['a'..'j'], y <- ['a'..'z'] ]
 
 arbitraryDigest :: HashAlgorithm h => h -> [Digest h]
 arbitraryDigest hashAlg = map (hashWith hashAlg . BC.pack) arbitraryFileContent
@@ -88,31 +88,31 @@ associateTags shuffle ds ts =
 
 sqlQueriesWork :: HashAlgorithm h => h -> SqlFile -> Int -> IO ()
 sqlQueriesWork hashAlg (SqlFile f) shuffle = do
-    conn <- localMetaCreate f
+    conn <- either error id <$> metaConnect "sqlite3" f
     let dgs = arbitraryDigest hashAlg
     forM_ dgs $ \dg -> do
-        dbAddData conn dg (DataInfo 1 Nothing Nothing Nothing)
+        metaAddData conn dg (DataInfo 1 Nothing Nothing Nothing)
     forM_ arbitraryTag $ \t -> do
-        dbCreateTag conn t
-    dbCommit conn
+        metaCreateTag conn t
+    metaCommit conn
 
     let ass = associateTags shuffle dgs arbitraryTag
 
     forM_ ass $ \(d, ts) -> do
-        mapM_ (dbAddTag conn d) ts
-    dbCommit conn
+        mapM_ (metaTag conn d) ts
+    metaCommit conn
 
     forM_ arbitraryTag $ \tag -> do
-        found <- dbTagGetDigests conn tag
+        found <- metaTagGetDigests conn tag
         let expected = map fst $ filter (\(_,ts) -> tag `elem` ts) ass
         listCompare ("digest for " ++ tag ++ " missing ") expected found
 
     forM_ dgs $ \dg -> do
-        found <- dbDigestGetTags conn dg
+        found <- metaDigestGetTags conn dg
         let expected = maybe [] id $ lookup dg ass
         listCompare ("tags for digest " ++ show dg ++ " missing") expected found
 
-    notTagged <- dbFindDigestsNotTagged conn
+    notTagged <- metaFindDigestsNotTagged conn
     let expected = map fst $ filter (\(_,ts) -> null ts) ass
     listCompare ("not tagged missing") expected notTagged
 

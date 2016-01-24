@@ -33,11 +33,27 @@ module Storage.HashFS
     , existsDigest
     , deleteFrom
     , pushFromTo
+    , Context(..)
+    , MetaProvider
     -- * Providers
     , Providers
     , Provider(..)
     , ProviderPerm(..)
     , ProviderBackend(..)
+    -- * Meta operation
+    , metaConnect
+    -- ** Meta creation / removal
+    , DataInfo(..)
+    , metaCreateTag
+    , metaAddData
+    , metaCommit
+    -- ** Meta Tagging / Untagging
+    , metaTag
+    , metaUntag
+    -- ** Meta query
+    , metaDigestGetTags
+    , metaTagGetDigests
+    , metaFindDigestsNotTagged
     ) where
 
 import           System.Directory
@@ -45,11 +61,12 @@ import           Control.Monad
 import           Storage.HashFS.Types
 import           Storage.HashFS.Path
 import           Storage.HashFS.Utils
-import           Storage.HashFS.Hasher
+import           Storage.HashFS.Hasher hiding (Context)
 import           Storage.HashFS.IO
 import           Storage.HashFS.ConfigFile
 import           Storage.HashFS.Local (makeConf, makeConfSHA512, makeConfSHA256)
 import qualified Storage.HashFS.Local as Local
+import           Storage.HashFS.Meta
 
 -- | List of Providers
 type Providers h = [Provider h]
@@ -60,6 +77,12 @@ data Trunk h = TrunkGroup
     , trunkGroupRouting      :: Int
     }
 -}
+
+data Context h = Context
+    { contextProviders  :: [Provider h]
+    , contextMetaviders :: [MetaProvider]
+    , contextHash       :: h
+    } deriving (Show,Eq)
 
 -- | Generic Provider
 data Provider h = Provider
@@ -87,19 +110,27 @@ data Remote = RemoteNative
 hashFileContext :: HashAlgorithm h => FilePath -> IO (Digest h)
 hashFileContext fp = hashFile hasherInitContext fp
 
-withConfig :: (forall h . (Show h, HashAlgorithm h) => [Provider h] -> IO ()) -> IO ()
+withConfig :: (forall h . (Show h, HashAlgorithm h) => Context h -> IO ()) -> IO ()
 withConfig f = do
     mcfg <- readSystem
     case mcfg of
         Nothing  -> error "no config file. you need to create a \".hashfs/config\" in your home directory"
         Just cfg -> do
-            let dbs = configDbs cfg
             case digestAlgorithm $ configDigest cfg of
-                "sha224"     -> f =<< mapM (toProvider SHA224) dbs
-                "sha256"     -> f =<< mapM (toProvider SHA256) dbs
-                "blake2-224" -> f =<< mapM (toProvider Blake2s_224) dbs
+                "sha224"     -> withHash SHA224 cfg
+                "sha256"     -> withHash SHA256 cfg
+                "blake2-224" -> withHash Blake2s_224 cfg
+                "blake2-256" -> withHash Blake2s_256 cfg
                 unknown      -> error $ "unknown hash: " ++ unknown
   where
+    withHash :: (Show h, HashAlgorithm h) => h -> ConfigFile -> IO ()
+    withHash h cfg = do
+        let dbs = configDbs cfg
+        provs <- mapM (toProvider h) dbs
+        metas <- mapM (toMeta h) (configMetas cfg)
+        let ctx = Context provs metas h
+        f ctx
+
     toProvider :: (Show h, HashAlgorithm h) => h -> ConfigDb -> IO (Provider h)
     toProvider hashAlg cdb = do
         case configDbType cdb of
@@ -126,22 +157,9 @@ withConfig f = do
                                   (ProviderLocal providerLocalConf)
             unknown -> error ("unknown database type: " ++ unknown)
 
-{-
-data Routing = Routing
-    { filepathPrefixes :: FilePath
-    , filepathExtensions :: [String]
-    }
-
-sortBy longest
--}
-
-{-
-initializeLocally :: (Show h, HashAlgorithm h) => String -> FilePath -> IO (Provider h)
-initializeLocally n fp = do
-    let conf = Local.makeConfContext [2,1] OutputBase32 fp
-    Local.initialize conf
-    return $ Provider n Nothing ReadWrite (ProviderLocal conf)
-    -}
+    toMeta :: HashAlgorithm h => h -> ConfigMeta -> IO MetaProvider
+    toMeta _ meta =
+        either error id <$> metaConnect (configMetaType meta) (configMetaPath meta)
 
 existsIn :: HashAlgorithm h => ProviderBackend h -> Digest h -> IO Bool
 existsIn (ProviderLocal conf) digest = Local.exists conf digest

@@ -77,8 +77,8 @@ main = defaultMain $ do
 
     command "config" $ do
         action $ \_ _ -> do
-            withConfig $ \providers -> do
-                mapM_ (putStrLn . show) providers
+            withConfig $ \context -> do
+                mapM_ (putStrLn . show) (contextProviders context)
     command "import" $ do
         repoD <- flagArg (   FlagLong "repository"
                           <> FlagShort 'r'
@@ -87,7 +87,8 @@ main = defaultMain $ do
         argDescs <- remainingArguments "arguments"
         action $ \getFlag getArg -> do
             disp <- displayInit
-            withConfig $ \provs -> do
+            withConfig $ \context -> do
+                let provs = contextProviders context
                 let args = getArg argDescs
                     repo = getFlag repoD
 
