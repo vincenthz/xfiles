@@ -6,6 +6,7 @@ module Storage.HashFS.Meta
     , metaConnect
     , metaCommit
     , metaDigestGetTags
+    , metaDigestRemoveTags
     , metaTagGetDigests
     , metaFindDigestsNotTagged
     , metaCreateTag
@@ -42,9 +43,11 @@ instance Eq MetaProvider where -- not quite valid ..
 
 -- Local provider create 3 tables
 --
--- one data:
+-- data: id, hash, datainfo...
+-- tag: id, name,
+-- tagmap: data(id) x tag(id)
 
-data IndexData
+--data IndexData
 data IndexTag
 
 newtype Index idx = Index Integer
@@ -74,6 +77,9 @@ metaCommit (MetaProviderBackendSQL sql) = dbCommit sql
 metaDigestGetTags :: HashAlgorithm h => MetaProvider -> Digest h -> IO [Tag]
 metaDigestGetTags (MetaProviderBackendSQL sql) = dbDigestGetTags sql
 
+metaDigestRemoveTags :: HashAlgorithm h => MetaProvider -> Digest h -> IO ()
+metaDigestRemoveTags (MetaProviderBackendSQL sql) = dbDigestRemoveTags sql
+
 metaTagGetDigests :: HashAlgorithm h => MetaProvider -> Tag -> IO [Digest h]
 metaTagGetDigests (MetaProviderBackendSQL sql) = dbTagGetDigests sql
 
@@ -84,7 +90,7 @@ metaCreateTag :: MetaProvider -> Tag -> IO (Index IndexTag)
 metaCreateTag (MetaProviderBackendSQL sql) = dbCreateTag sql
 
 metaUntag :: HashAlgorithm h => MetaProvider -> Digest h -> Tag -> IO ()
-metaUntag (MetaProviderBackendSQL sql) = undefined -- dbRemoveTag sql
+metaUntag (MetaProviderBackendSQL sql) = dbUntag sql
 
 metaTag :: HashAlgorithm h => MetaProvider -> Digest h -> Tag -> IO ()
 metaTag (MetaProviderBackendSQL sql) = dbAddTag sql
@@ -111,18 +117,8 @@ initializeTable conn = do
         ]
     commit conn
 
-getPrimaryKey :: Index a -> Integer
-getPrimaryKey (Index i) = i
-
 dbCommit :: MetaProviderSQL -> IO ()
 dbCommit (MetaProviderSQL conn) = commit conn
-
--- | add a Tag on some data
-dbAddTagRaw :: MetaProviderSQL -> Index IndexData -> Index IndexTag -> IO ()
-dbAddTagRaw (MetaProviderSQL conn) key tag = do
-    stmt <- prepare conn query
-    void $ execute stmt [toSql (getPrimaryKey key),toSql $ getPrimaryKey tag]
-  where query = "INSERT INTO tagmap VALUES (?,?)"
 
 dbAddTag :: MetaProviderSQL -> Digest h -> Tag -> IO ()
 dbAddTag (MetaProviderSQL conn) digest tag = do
@@ -145,11 +141,24 @@ dbAddData (MetaProviderSQL conn) digest dataInfo = do
   where
     query = "INSERT INTO data (hash, size, itime, date, dirname, filename) VALUES (?,?,?,?,?,?)" -- hash, size, itime, date, dirname, filename
 
--- | Remove a Tag from some data
-dbRemoveTag :: MetaProviderSQL -> Index IndexData -> Index IndexTag -> IO ()
-dbRemoveTag conn key tag = run_ conn query []
+dbDigestRemoveTags :: HashAlgorithm h => MetaProviderSQL -> Digest h -> IO ()
+dbDigestRemoveTags conn digest = run_ conn query []
   where
-    query = "DELETE FROM tagmap WHERE data_id=" ++ show (getPrimaryKey key) ++ " AND tag_id=" ++ show (getPrimaryKey tag)
+    query = "DELETE FROM tagmap WHERE data_id IN (SELECT id FROM data WHERE hash = '" ++ digestToDb digest ++ "')"
+
+dbUntag :: HashAlgorithm h => MetaProviderSQL -> Digest h -> Tag -> IO ()
+dbUntag conn digest tag = do
+    indexTag <- dbResolveTag conn tag
+    case indexTag of
+        Nothing   -> return ()
+        Just iTag -> run_ conn (query iTag) []
+  where
+    query iTag = mconcat
+        ["DELETE FROM tagmap WHERE "
+        , "tag_id = " ++ show (getPrimaryKey iTag)
+        , " AND "
+        , "data_id IN (SELECT id FROM data WHERE hash = '" ++ digestToDb digest ++ "')"
+        ]
 
 -- | Create a specific tag
 --
@@ -174,14 +183,6 @@ dbFindTag (MetaProviderSQL conn) tag = do
         []      -> return Nothing
         [[uid]] -> return $ Just $ Index $ fromSql uid
         _       -> error ("dbFindTag: " ++ show tag ++ " unexpected sql output format " ++ show r)
-
-dbResolveDigest :: MetaProviderSQL -> Digest h -> IO (Maybe (Index IndexData))
-dbResolveDigest (MetaProviderSQL conn) digest = do
-    r <- quickQuery conn ("SELECT id FROM data WHERE hash='" ++ digestToDb digest ++ "'") []
-    case r of
-        _:_:_   -> error ("duplicate data instance in database: " ++ show digest)
-        [[uid]] -> return $ Just $ Index $ fromSql uid
-        _       -> return Nothing
 
 
 dbDigestGetTags :: MetaProviderSQL -> Digest h -> IO [Tag]
@@ -239,10 +240,6 @@ dbFindDigestsNotTagged (MetaProviderSQL conn) = do
     toRet [x] = digestFromDb $ fromSql x
     toRet _   = error "dbDigetGetTags: internal error: query returned invalid number of items"
 
--- | run a query
-run_ :: (Functor m, MonadIO m) => MetaProviderSQL -> String -> [SqlValue] -> m ()
-run_ (MetaProviderSQL conn) query args = void $ liftIO $ run conn query args
-
 -- | execute a statement (that should be insert)
 -- and return the last inserted rowid (primary key)
 insertAndGetID :: MetaProviderSQL -> Statement -> [SqlValue] -> IO (Index a)
@@ -257,3 +254,36 @@ digestToDb = show
 
 digestFromDb :: HashAlgorithm h => String -> Digest h
 digestFromDb = maybe (error "from db not a valid digest") id . inputDigest OutputHex
+
+-- | run a query
+run_ :: (Functor m, MonadIO m) => MetaProviderSQL -> String -> [SqlValue] -> m ()
+run_ (MetaProviderSQL conn) query args = void $ liftIO $ run conn query args
+
+dbResolveTag :: MetaProviderSQL -> Tag -> IO (Maybe (Index IndexTag))
+dbResolveTag (MetaProviderSQL conn) tag = do
+    r <- quickQuery conn ("SELECT id FROM tag WHERE name='" ++ tagName tag ++ "'") []
+    case r of
+        _:_:_   -> error ("duplicate tag instance in database: " ++ show tag)
+        [[uid]] -> return $ Just $ Index $ fromSql uid
+        _       -> return Nothing
+
+getPrimaryKey :: Index a -> Integer
+getPrimaryKey (Index i) = i
+
+{- old API / queries : might need reviving
+
+dbResolveDigest :: MetaProviderSQL -> Digest h -> IO (Maybe (Index IndexData))
+dbResolveDigest (MetaProviderSQL conn) digest = do
+    r <- quickQuery conn ("SELECT id FROM data WHERE hash='" ++ digestToDb digest ++ "'") []
+    case r of
+        _:_:_   -> error ("duplicate data instance in database: " ++ show digest)
+        [[uid]] -> return $ Just $ Index $ fromSql uid
+        _       -> return Nothing
+
+-- | add a Tag on some data
+dbAddTagRaw :: MetaProviderSQL -> Index IndexData -> Index IndexTag -> IO ()
+dbAddTagRaw (MetaProviderSQL conn) key tag = do
+    stmt <- prepare conn query
+    void $ execute stmt [toSql (getPrimaryKey key),toSql $ getPrimaryKey tag]
+  where query = "INSERT INTO tagmap VALUES (?,?)"
+-}
