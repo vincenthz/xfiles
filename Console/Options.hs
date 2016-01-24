@@ -1,5 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE GADTs #-}
 module Console.Options
@@ -33,6 +34,7 @@ import           Console.Options.Nid
 import           Console.Options.Utils
 import           Console.Options.Monad
 import           Console.Options.Types
+import           Console.Display (justify, Justify(..))
 
 import           Control.Applicative
 import           Control.Monad
@@ -92,20 +94,33 @@ help pmeta (Command hier _ commandOpts _) = mapM_ putStrLn . lines $ snd $ runWr
     maybe (return ()) (\d -> tell d >> tell "\n\n") (programMetaDescription pmeta)
     tell "Options:\n"
     tell "\n"
-    mapM_ (tell . printOpt) commandOpts
+    mapM_ (tell . printOpt 0) commandOpts
     case hier of
         CommandTree subs -> do
             tell "\n"
             tell "Commands:\n"
-            mapM_ (tell . indent 2 . (++ "\n") . fst) subs
+            let cmdLength = maximum (map (length . fst) subs) + 2
+            mapM_ (\(n, c) -> tell $ indent 2 (justify JustifyRight cmdLength n ++ getCommandDescription c ++ "\n")) subs
+            tell "\n"
+            mapM_ (printSub 0) subs
         CommandLeaf _    ->
             return ()
   where
-    printOpt fd =
+    printSub iLevel (name, cmdOpt) = do
+        tell ("\n" ++ name ++ " options:\n\n")
+        mapM_ (tell . printOpt iLevel) (getCommandOptions cmdOpt)
+        case getCommandHier cmdOpt of
+            CommandTree _ -> do
+                return ()
+            CommandLeaf _ -> do
+                return ()
+        --tell . indent 2 ""
+
+    printOpt iLevel fd =
         let optShort = maybe (replicate 2 ' ') (\c -> "-" ++ [c]) $ flagShort ff
             optLong  = maybe (replicate 8 ' ') (\s -> "--" ++ s) $ flagLong ff
-            optDesc  = maybe "" id $ flagDescription ff
-         in indent 2 $ intercalate " " [optShort, optLong, optDesc] ++ "\n"
+            optDesc  = maybe "" ("  " ++) $ flagDescription ff
+         in indent (iLevel + 2) $ intercalate " " [optShort, optLong, optDesc] ++ "\n"
       where
         ff = flagFragments fd
 

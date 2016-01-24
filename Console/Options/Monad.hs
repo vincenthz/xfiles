@@ -49,7 +49,7 @@ initialProgramDesc = ProgramDesc { stMeta        = programMetaDefault
                                  }
   where
     iniCommand :: Command
-    iniCommand = Command (CommandLeaf []) "no description" [] noAction
+    iniCommand = Command (CommandLeaf []) "..." [] noAction
 
     noAction :: (forall a . Flag a -> Maybe a)
              -> (forall a . Arg a -> a)

@@ -76,10 +76,12 @@ main = defaultMain $ do
             return ()
 
     command "config" $ do
+        description "print the config read from the environment and quit"
         action $ \_ _ -> do
             withConfig $ \context -> do
                 mapM_ (putStrLn . show) (contextProviders context)
     command "import" $ do
+        description "import individual or group of files"
         repoD <- flagArg (   FlagLong "repository"
                           <> FlagShort 'r'
                           <> FlagDescription "explicitly specify the repository used for import"

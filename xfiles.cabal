@@ -88,6 +88,7 @@ Library
                    , containers
                    , hashable
                    , hashtables
+                   , utf8-string
                    , bytestring
                    , filepath
                    , directory

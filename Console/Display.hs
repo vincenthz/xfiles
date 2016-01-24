@@ -17,6 +17,7 @@ module Console.Display
     , Color(..)
     , OutputElem(..)
     , termText
+    , justify
     -- * Table
     , Justify(..)
     , Table
@@ -200,6 +201,16 @@ summarySet (Summary backend) output = do
 
 data Justify = JustifyLeft | JustifyRight
 
+justify :: Justify -> Int -> String -> String
+justify dir sz s
+    | sz <= szS = s
+    | otherwise =
+        let pad = replicate (sz - szS) ' '
+         in case dir of
+                JustifyLeft  -> pad ++ s
+                JustifyRight -> s ++ pad
+  where
+    szS = length s
 {-
 data Attr = Attr
     { attrHasSize    :: Maybe Int
