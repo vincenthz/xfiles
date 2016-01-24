@@ -24,6 +24,7 @@ Library
                    , Tools.Config
                    , Tools.Utils
                    , Data.FileFormat
+                   , Data.Buffer
                    , System.Directory.Traverse
                    , Console.Display
                    , Console.Options
