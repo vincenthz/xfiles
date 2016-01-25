@@ -47,7 +47,7 @@ withParameters f = do
     return ()
 
 arbitraryFileContent :: [String]
-arbitraryFileContent = [ [x,y] | x <- ['a'..'j'], y <- ['a'..'z'] ]
+arbitraryFileContent = [ [x,y] | x <- ['a'..'b'], y <- ['a'..'z'] ]
 
 arbitraryDigest :: HashAlgorithm h => h -> [Digest h]
 arbitraryDigest hashAlg = map (hashWith hashAlg . BC.pack) arbitraryFileContent

@@ -18,9 +18,9 @@ import           System.Exit
 
 -- the current state of the program description
 -- as the monad unfold ..
-data ProgramDesc = ProgramDesc
+data ProgramDesc r = ProgramDesc
     { stMeta        :: ProgramMeta
-    , stCT          :: Command       -- the command
+    , stCT          :: Command r     -- the command with the return type of actions
     , stNextID      :: !NidGenerator -- next id for flag
     , stNextIndex   :: !UnnamedIndex -- next index for unnamed argument
     }
@@ -35,37 +35,31 @@ data ProgramMeta = ProgramMeta
 programMetaDefault :: ProgramMeta
 programMetaDefault = ProgramMeta Nothing Nothing Nothing ["-h", "--help"]
 
-newtype OptionDesc a = OptionDesc { runOptionDesc :: StateT ProgramDesc Identity a }
-    deriving (Functor,Applicative,Monad,MonadState ProgramDesc)
+-- OptionDesc (return value of action) a
+newtype OptionDesc r a = OptionDesc { runOptionDesc :: StateT (ProgramDesc r) Identity a }
+    deriving (Functor,Applicative,Monad,MonadState (ProgramDesc r))
 
-gatherDesc :: OptionDesc a -> ProgramDesc
+gatherDesc :: OptionDesc r a -> ProgramDesc r
 gatherDesc dsl = runIdentity $ execStateT (runOptionDesc dsl) initialProgramDesc
 
-initialProgramDesc :: ProgramDesc
+initialProgramDesc :: ProgramDesc r
 initialProgramDesc = ProgramDesc { stMeta        = programMetaDefault
                                  , stCT          = iniCommand
                                  , stNextID      = nidGenerator
                                  , stNextIndex   = 0
                                  }
   where
-    iniCommand :: Command
-    iniCommand = Command (CommandLeaf []) "..." [] noAction
-
-    noAction :: (forall a . Flag a -> Maybe a)
-             -> (forall a . Arg a -> a)
-             -> IO ()
-    noAction _ _ = do
-        hPutErrLn "error: no action defined, using default handler"
-        exitFailure
+    iniCommand :: Command r
+    iniCommand = Command (CommandLeaf []) "..." [] Nothing
 
 -- | Return the next unique argument ID
-getNextID :: OptionDesc Nid
+getNextID :: OptionDesc r Nid
 getNextID = do
     (nid, nidGen) <- nidNext . stNextID <$> get
     modify $ \st -> st { stNextID = nidGen }
     return nid
 
-getNextIndex :: OptionDesc UnnamedIndex
+getNextIndex :: OptionDesc r UnnamedIndex
 getNextIndex = do
     idx <- stNextIndex <$> get
     modify $ \st -> st { stNextIndex = idx + 1 }

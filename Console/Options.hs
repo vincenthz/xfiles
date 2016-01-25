@@ -8,6 +8,8 @@ module Console.Options
     -- * Running
       defaultMain
     , defaultMainWith
+    , parseOptions
+    , OptionRes(..)
     -- * Description
     , programName
     , programVersion
@@ -49,16 +51,16 @@ import           System.Environment (getArgs, getProgName)
 import           System.Exit
 
 ----------------------------------------------------------------------
-setDescription :: String -> Command -> Command
+setDescription :: String -> Command r -> Command r
 setDescription desc  (Command hier _ opts act)    = Command hier desc opts act
 
-setAction :: Action -> Command -> Command
-setAction ioAct (Command hier desc opts _)   = Command hier desc opts ioAct
+setAction :: Action r -> Command r -> Command r
+setAction act (Command hier desc opts _)   = Command hier desc opts (Just act)
 
-addOption :: FlagDesc -> Command -> Command
+addOption :: FlagDesc -> Command r -> Command r
 addOption opt   (Command hier desc opts act) = Command hier desc (opt : opts) act
 
-addArg :: Argument -> Command -> Command
+addArg :: Argument -> Command r -> Command r
 addArg arg = modifyHier $ \hier ->
     case hier of
         CommandLeaf l  -> CommandLeaf (arg:l)
@@ -77,17 +79,32 @@ newtype Flags = Flags [(Nid, Maybe String)] -- @ flag arguments
 data Args = Args [String]              -- @ unnamed pinned arguments
                  [String]              -- @ remaining unnamed arguments
 
-defaultMain :: OptionDesc () -> IO ()
+data OptionRes r =
+      Executing r
+    | HelpMode
+    | UserError String -- user cmdline error in the arguments
+    | InvalidUse String -- API has been misused
+
+defaultMain :: OptionDesc (IO ()) () -> IO ()
 defaultMain dsl = getArgs >>= defaultMainWith dsl
 
-defaultMainWith :: OptionDesc () -> [String] -> IO ()
+defaultMainWith :: OptionDesc (IO ()) () -> [String] -> IO ()
 defaultMainWith dsl args = do
+    let (programDesc, res) = parseOptions dsl args
+     in case res of
+        UserError s  -> putStrLn s >> exitFailure
+        HelpMode     -> help (stMeta programDesc) (stCT programDesc) >> exitSuccess
+        Executing r  -> r
+        InvalidUse s -> putStrLn s >> exitFailure
+
+parseOptions :: OptionDesc r () -> [String] -> (ProgramDesc r, OptionRes r)
+parseOptions dsl args =
     let descState = gatherDesc dsl
-    runOptions (stMeta descState) (stCT descState) args
+     in (descState, runOptions (stMeta descState) (stCT descState) args)
 
 --helpSubcommand :: [String] -> IO ()
 
-help :: ProgramMeta -> Command -> IO ()
+help :: ProgramMeta -> Command (IO ()) -> IO ()
 help pmeta (Command hier _ commandOpts _) = mapM_ putStrLn . lines $ snd $ runWriter $ do
     tell (maybe "<program>" id (programMetaName pmeta) ++ " version " ++ maybe "<undefined>" id (programMetaVersion pmeta) ++ "\n")
     tell "\n"
@@ -125,16 +142,16 @@ help pmeta (Command hier _ commandOpts _) = mapM_ putStrLn . lines $ snd $ runWr
         ff = flagFragments fd
 
 runOptions :: ProgramMeta
-           -> Command  -- commands
+           -> Command r -- commands
            -> [String] -- arguments
-           -> IO ()
+           -> OptionRes r
 runOptions pmeta ct allArgs
-    | "--help" `elem` allArgs = help pmeta ct
-    | "-h" `elem` allArgs     = help pmeta ct
+    | "--help" `elem` allArgs = HelpMode
+    | "-h" `elem` allArgs     = HelpMode
     | otherwise               = go [] ct allArgs
   where
         -- parse recursively using a Command structure
-        go :: [[F.Flag]] -> Command -> [String] -> IO ()
+        go :: [[F.Flag]] -> Command r -> [String] -> OptionRes r
         go parsedOpts (Command hier _ commandOpts act) unparsedArgs =
             case parseFlags commandOpts unparsedArgs of
                 (opts, unparsed, [])  -> do
@@ -153,10 +170,11 @@ runOptions pmeta ct allArgs
                                 Left err   -> errorUnnamedArgument err
                                 Right args -> do
                                     let flags = Flags $ concat (opts:parsedOpts)
-                                    act (getFlag flags) (getArg args)
+                                    case act of
+                                        Nothing -> InvalidUse "no action defined"
+                                        Just a  -> Executing $ a (getFlag flags) (getArg args)
                 (_, _, ers) -> do
-                    mapM_ showOptionError ers
-                    exitFailure
+                    UserError $ mconcat $ map showOptionError ers
 
         validateUnnamedArgs :: [Argument] -> [String] -> Either String Args
         validateUnnamedArgs argOpts l =
@@ -174,55 +192,52 @@ runOptions pmeta ct allArgs
 
         showOptionError (FlagError opt i s) = do
             let optName = (maybe "" (:[]) $ flagShort $ flagFragments opt) ++ " " ++ (maybe "" id $ flagLong $ flagFragments opt)
-            hPutErrLn ("error: " ++ show i ++ " option " ++ optName ++ " : " ++ s)
+             in ("error: " ++ show i ++ " option " ++ optName ++ " : " ++ s ++ "\n")
 
-        errorUnnamedArgument err = do
-            mapM_ hPutErrLn $
+        errorUnnamedArgument err =
+            UserError $ mconcat
                 [ "error: " ++ err
                 , ""
                 ]
-            exitFailure
 
-        errorExpectingMode subs = do
-            mapM_ hPutErrLn $
-                [ "error: expecting one of the following mode: "
+        errorExpectingMode subs =
+            UserError $ mconcat (
+                [ "error: expecting one of the following mode:\n"
+                , "\n"
+                ] ++ map (indent 4 . (++ "\n") . fst) subs)
+        errorInvalidMode got subs =
+            UserError $ mconcat (
+                [ "error: invalid mode '" ++ got ++ "', expecting one of the following mode:\n"
                 , ""
-                ] ++ map (indent 4 . fst) subs
-            exitFailure
-        errorInvalidMode got subs = do
-            mapM_ hPutErrLn $
-                [ "error: invalid mode '" ++ got ++ "', expecting one of the following mode: "
-                , ""
-                ] ++ map (indent 4 . fst) subs
-            exitFailure
+                ] ++ map (indent 4 . (++ "\n") . fst) subs)
 
 indent :: Int -> String -> String
 indent n s = replicate n ' ' ++ s
 
 -- | Set the program name
-programName :: String -> OptionDesc ()
+programName :: String -> OptionDesc r ()
 programName s = modify $ \st -> st { stMeta = (stMeta st) { programMetaName = Just s } }
 
 -- | Set the program version
-programVersion :: Version -> OptionDesc ()
+programVersion :: Version -> OptionDesc r ()
 programVersion s = modify $ \st -> st { stMeta = (stMeta st) { programMetaVersion = Just $ showVersion s } }
 
 -- | Set the program description
-programDescription :: String -> OptionDesc ()
+programDescription :: String -> OptionDesc r ()
 programDescription s = modify $ \st -> st { stMeta = (stMeta st) { programMetaDescription = Just s } }
 
 -- | Set the description for a command
-description :: String -> OptionDesc ()
+description :: String -> OptionDesc r ()
 description doc = modify $ \st -> st { stCT = setDescription doc (stCT st) }
 
-modifyHier :: (CommandHier -> CommandHier) -> Command -> Command
+modifyHier :: (CommandHier r -> CommandHier r) -> Command r -> Command r
 modifyHier f (Command hier desc opts act) = Command (f hier) desc opts act
 
-modifyCT :: (Command -> Command) -> OptionDesc ()
+modifyCT :: (Command r -> Command r) -> OptionDesc r ()
 modifyCT f = modify $ \st -> st { stCT = f (stCT st) }
 
 -- | Create a new sub command
-command :: String -> OptionDesc () -> OptionDesc ()
+command :: String -> OptionDesc r () -> OptionDesc r ()
 command name sub = do
     let subSt = gatherDesc sub
     modifyCT (addCommand (stCT subSt))
@@ -233,13 +248,13 @@ command name sub = do
                 CommandTree t -> CommandTree ((name, subTree) : t)
 
 -- | Set the action to run in this command
-action :: Action -> OptionDesc ()
+action :: Action r -> OptionDesc r ()
 action ioAct = modify $ \st -> st { stCT = setAction ioAct (stCT st) }
 
 -- | Flag option either of the form -short or --long
 --
 -- for flag that doesn't have parameter, use 'flag'
-flagArg :: FlagFrag -> FlagParser a -> OptionDesc (Flag a)
+flagArg :: FlagFrag -> FlagParser a -> OptionDesc r (Flag a)
 flagArg frag fp = do
     nid <- getNextID
 
@@ -270,7 +285,7 @@ flagArg frag fp = do
 -- | Flag option either of the form -short or --long
 --
 -- for flag that expect a value (optional or mandatory), uses 'flagArg'
-flag :: FlagFrag -> OptionDesc (Flag Bool)
+flag :: FlagFrag -> OptionDesc r (Flag Bool)
 flag frag = do
     nid <- getNextID
 
@@ -290,7 +305,7 @@ flag frag = do
 --
 -- For now, argument in a point of tree that contains sub trees will be ignored.
 -- TODO: record a warning or add a strict mode (for developping the CLI) and error.
-argument :: String -> ValueParser a -> OptionDesc (Arg a)
+argument :: String -> ValueParser a -> OptionDesc r (Arg a)
 argument name fp = do
     idx <- getNextIndex
     let a = Argument { argumentName        = name
@@ -300,7 +315,7 @@ argument name fp = do
     modifyCT $ addArg a
     return (Arg idx (either (error "internal error") id . fp))
 
-remainingArguments :: String -> OptionDesc (Arg [String])
+remainingArguments :: String -> OptionDesc r (Arg [String])
 remainingArguments name = do
     let a = ArgumentCatchAll { argumentName        = name
                              , argumentDescription = ""
@@ -310,7 +325,7 @@ remainingArguments name = do
 
 -- | give the ability to set options that are conflicting with each other
 -- if option a is given with option b then an conflicting error happens
-conflict :: Flag a -> Flag b -> OptionDesc ()
+conflict :: Flag a -> Flag b -> OptionDesc r ()
 conflict = undefined
 
 getFlag :: Flags -> (forall a . Flag a -> Maybe a)

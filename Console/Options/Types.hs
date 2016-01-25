@@ -41,19 +41,19 @@ type UnnamedIndex = Int
 
 -- A command that is composed of a hierarchy
 --
-data Command = Command
-    { getCommandHier        :: CommandHier
+data Command r = Command
+    { getCommandHier        :: CommandHier r
     , getCommandDescription :: String
     , getCommandOptions     :: [FlagDesc]
-    , getCommandAction      :: Action
+    , getCommandAction      :: Maybe (Action r)
     }
 
 -- | Recursive command tree
-data CommandHier =
-      CommandTree [(String, Command)]
+data CommandHier r =
+      CommandTree [(String, Command r)]
     | CommandLeaf [Argument]
 
 -- | Represent a program to run
-type Action = (forall a . Flag a -> Maybe a) -- flags
-           -> (forall a . Arg a -> a)        -- unnamed argument
-           -> IO ()
+type Action r = (forall a . Flag a -> Maybe a) -- flags
+             -> (forall a . Arg a -> a)        -- unnamed argument
+             -> r

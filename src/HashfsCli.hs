@@ -86,6 +86,9 @@ main = defaultMain $ do
                           <> FlagShort 'r'
                           <> FlagDescription "explicitly specify the repository used for import"
                          ) (FlagRequired Right)
+        groupD <- flagArg (FlagLong "group" <> FlagShort 'g' <> FlagDescription "tag with a group") (FlagRequired Right)
+        tagD   <- flagArg (FlagLong "tag" <> FlagShort 't' <> FlagDescription "add a tag") (FlagRequired Right)
+
         argDescs <- remainingArguments "arguments"
         action $ \getFlag getArg -> do
             disp <- displayInit
