@@ -81,10 +81,10 @@ data Args = Args [String]              -- @ unnamed pinned arguments
                  [String]              -- @ remaining unnamed arguments
 
 data OptionRes r =
-      Executing r
-    | HelpMode
-    | UserError String -- user cmdline error in the arguments
-    | InvalidUse String -- API has been misused
+      OptionSuccess r
+    | OptionHelp
+    | OptionError String -- user cmdline error in the arguments
+    | OptionInvalid String -- API has been misused
 
 defaultMain :: OptionDesc (IO ()) () -> IO ()
 defaultMain dsl = getArgs >>= defaultMainWith dsl
@@ -93,10 +93,10 @@ defaultMainWith :: OptionDesc (IO ()) () -> [String] -> IO ()
 defaultMainWith dsl args = do
     let (programDesc, res) = parseOptions dsl args
      in case res of
-        UserError s  -> putStrLn s >> exitFailure
-        HelpMode     -> help (stMeta programDesc) (stCT programDesc) >> exitSuccess
-        Executing r  -> r
-        InvalidUse s -> putStrLn s >> exitFailure
+        OptionError s   -> putStrLn s >> exitFailure
+        OptionHelp      -> help (stMeta programDesc) (stCT programDesc) >> exitSuccess
+        OptionSuccess r -> r
+        OptionInvalid s -> putStrLn s >> exitFailure
 
 parseOptions :: OptionDesc r () -> [String] -> (ProgramDesc r, OptionRes r)
 parseOptions dsl args =
@@ -147,8 +147,8 @@ runOptions :: ProgramMeta
            -> [String] -- arguments
            -> OptionRes r
 runOptions pmeta ct allArgs
-    | "--help" `elem` allArgs = HelpMode
-    | "-h" `elem` allArgs     = HelpMode
+    | "--help" `elem` allArgs = OptionHelp
+    | "-h" `elem` allArgs     = OptionHelp
     | otherwise               = go [] ct allArgs
   where
         -- parse recursively using a Command structure
@@ -172,10 +172,10 @@ runOptions pmeta ct allArgs
                                 Right args -> do
                                     let flags = Flags $ concat (opts:parsedOpts)
                                     case act of
-                                        Nothing -> InvalidUse "no action defined"
-                                        Just a  -> Executing $ a (getFlag flags) (getArg args)
+                                        Nothing -> OptionInvalid "no action defined"
+                                        Just a  -> OptionSuccess $ a (getFlag flags) (getArg args)
                 (_, _, ers) -> do
-                    UserError $ mconcat $ map showOptionError ers
+                    OptionError $ mconcat $ map showOptionError ers
 
         validateUnnamedArgs :: [Argument] -> [String] -> Either String Args
         validateUnnamedArgs argOpts l =
@@ -196,18 +196,18 @@ runOptions pmeta ct allArgs
              in ("error: " ++ show i ++ " option " ++ optName ++ " : " ++ s ++ "\n")
 
         errorUnnamedArgument err =
-            UserError $ mconcat
+            OptionError $ mconcat
                 [ "error: " ++ err
                 , ""
                 ]
 
         errorExpectingMode subs =
-            UserError $ mconcat (
+            OptionError $ mconcat (
                 [ "error: expecting one of the following mode:\n"
                 , "\n"
                 ] ++ map (indent 4 . (++ "\n") . fst) subs)
         errorInvalidMode got subs =
-            UserError $ mconcat (
+            OptionError $ mconcat (
                 [ "error: invalid mode '" ++ got ++ "', expecting one of the following mode:\n"
                 , ""
                 ] ++ map (indent 4 . (++ "\n") . fst) subs)

@@ -27,15 +27,15 @@ commandBar = command "bar" $ do
 
 testParseHelp name f = testProperty name $ runIdentity $ do
     case snd f of
-        HelpMode -> return True
-        _        -> return False
+        OptionHelp -> return True
+        _          -> return False
 
 testParseSuccess name f =
     testProperty name $ runIdentity $ do
         let (_,r) = f
          in case r of
-                Executing f -> f
-                _           -> return False
+                OptionSuccess f -> f
+                _               -> return False
 
 main = defaultMain $ testGroup "options"
     [ testGroup "help"
