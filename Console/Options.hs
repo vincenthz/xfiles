@@ -10,6 +10,7 @@ module Console.Options
     , defaultMainWith
     , parseOptions
     , OptionRes(..)
+    , OptionDesc
     -- * Description
     , programName
     , programVersion
