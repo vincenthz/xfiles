@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeFamilies #-}
 module Console.Options
     (
     -- * Running
@@ -29,6 +30,9 @@ module Console.Options
     , FlagParser(..)
     , Flag
     , Arg
+    , ArgRemaining
+    , Params(..)
+    , getParams
     ) where
 
 import           Console.Options.Flags hiding (Flag, flagArg)
@@ -47,6 +51,7 @@ import           Control.Monad.Writer
 
 import           Data.List
 import           Data.Version
+import           Data.Functor.Identity
 
 import           System.Environment (getArgs, getProgName)
 import           System.Exit
@@ -74,14 +79,8 @@ data FlagParser a =
 
 type ValueParser a = String -> Either String a
 
--- use something with faster lookup. using list for now, to not bring dep
-newtype Flags = Flags [(Nid, Maybe String)] -- @ flag arguments
-
-data Args = Args [String]              -- @ unnamed pinned arguments
-                 [String]              -- @ remaining unnamed arguments
-
 data OptionRes r =
-      OptionSuccess r
+      OptionSuccess Params (Action r)
     | OptionHelp
     | OptionError String -- user cmdline error in the arguments
     | OptionInvalid String -- API has been misused
@@ -93,10 +92,10 @@ defaultMainWith :: OptionDesc (IO ()) () -> [String] -> IO ()
 defaultMainWith dsl args = do
     let (programDesc, res) = parseOptions dsl args
      in case res of
-        OptionError s   -> putStrLn s >> exitFailure
-        OptionHelp      -> help (stMeta programDesc) (stCT programDesc) >> exitSuccess
-        OptionSuccess r -> r
-        OptionInvalid s -> putStrLn s >> exitFailure
+        OptionError s          -> putStrLn s >> exitFailure
+        OptionHelp             -> help (stMeta programDesc) (stCT programDesc) >> exitSuccess
+        OptionSuccess params r -> r (getParams params) -- (getFlag params) (getArg params)
+        OptionInvalid s        -> putStrLn s >> exitFailure
 
 parseOptions :: OptionDesc r () -> [String] -> (ProgramDesc r, OptionRes r)
 parseOptions dsl args =
@@ -169,21 +168,25 @@ runOptions pmeta ct allArgs
                         CommandLeaf unnamedArgs ->
                             case validateUnnamedArgs (reverse unnamedArgs) unparsed of
                                 Left err   -> errorUnnamedArgument err
-                                Right args -> do
-                                    let flags = Flags $ concat (opts:parsedOpts)
+                                Right (pinnedArgs, remainingArgs) -> do
+                                    let flags = concat (opts:parsedOpts)
                                     case act of
                                         Nothing -> OptionInvalid "no action defined"
-                                        Just a  -> OptionSuccess $ a (getFlag flags) (getArg args)
+                                        Just a  ->
+                                            let params = Params flags
+                                                                pinnedArgs
+                                                                remainingArgs
+                                             in OptionSuccess params a
                 (_, _, ers) -> do
                     OptionError $ mconcat $ map showOptionError ers
 
-        validateUnnamedArgs :: [Argument] -> [String] -> Either String Args
+        validateUnnamedArgs :: [Argument] -> [String] -> Either String ([String], [String])
         validateUnnamedArgs argOpts l =
             v [] argOpts >>= \(opts, _hasCatchall) -> do
                 let unnamedRequired = length opts
                 if length l < unnamedRequired
                     then Left "missing arguments"
-                    else Right $ uncurry Args $ splitAt unnamedRequired l
+                    else Right $ splitAt unnamedRequired l
           where
             v :: [Argument] -> [Argument] -> Either String ([Argument], Bool)
             v acc []                    = Right (reverse acc, False)
@@ -255,7 +258,7 @@ action ioAct = modify $ \st -> st { stCT = setAction ioAct (stCT st) }
 -- | Flag option either of the form -short or --long
 --
 -- for flag that doesn't have parameter, use 'flag'
-flagArg :: FlagFrag -> FlagParser a -> OptionDesc r (Flag a)
+flagArg :: FlagFrag -> FlagParser a -> OptionDesc r (FlagParam a)
 flagArg frag fp = do
     nid <- getNextID
 
@@ -300,7 +303,7 @@ flag frag = do
                 }
 
     modify $ \st -> st { stCT = addOption opt (stCT st) }
-    return (FlagNoParam nid)
+    return (Flag nid)
 
 -- | An unnamed argument
 --
@@ -316,7 +319,7 @@ argument name fp = do
     modifyCT $ addArg a
     return (Arg idx (either (error "internal error") id . fp))
 
-remainingArguments :: String -> OptionDesc r (Arg [String])
+remainingArguments :: String -> OptionDesc r (ArgRemaining [String])
 remainingArguments name = do
     let a = ArgumentCatchAll { argumentName        = name
                              , argumentDescription = ""
@@ -328,23 +331,3 @@ remainingArguments name = do
 -- if option a is given with option b then an conflicting error happens
 conflict :: Flag a -> Flag b -> OptionDesc r ()
 conflict = undefined
-
-getFlag :: Flags -> (forall a . Flag a -> Maybe a)
-getFlag (Flags flagArgs) (FlagParam nid p) =
-    case lookup nid flagArgs of
-        Just Nothing      -> error "internal error: parameter is missing" -- something is wrong with the flag parser
-        Just (Just param) -> Just (p param)
-        Nothing           -> Nothing
-getFlag (Flags flagArgs) (FlagParamOpt nid a p) =
-    case lookup nid flagArgs of
-        Just (Just param) -> Just (p param)
-        Just Nothing      -> Just a
-        Nothing           -> Nothing
-getFlag (Flags flagArgs) (FlagNoParam nid) =
-    fmap (const True) $ lookup nid flagArgs
-
-getArg :: Args -> (forall a . Arg a -> a)
-getArg (Args unnamedArgs _) (Arg index p) =
-    p (unnamedArgs !! index)
-getArg (Args _ otherArgs) ArgsRemaining =
-    otherArgs

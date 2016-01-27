@@ -202,8 +202,8 @@ main = do
         programVersion (Paths_xfiles.version)
         detailedFlag <- flag $ FlagShort 'd' <> FlagLong "detailed"
         allArgs      <- remainingArguments "FILE"
-        action $ \flags args ->
+        action $ \toParam ->
             xdu term
-                (maybe False id $ flags detailedFlag)
-                (if null (args allArgs) then ["."] else args allArgs)
+                (toParam detailedFlag)
+                (if null (toParam allArgs) then ["."] else toParam allArgs)
 

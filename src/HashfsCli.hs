@@ -52,7 +52,7 @@ main = defaultMain $ do
     command "replicate" $ do
         serverFlag <- flag $ FlagLong "server"
         serverKey  <- flag $ FlagLong "server-key"
-        action $ \_ _ -> do
+        action $ \_ -> do
             key <- readKeyFile "client.priv"
             --a <- getArgs
             -- hardcoded server public key in hex
@@ -77,7 +77,7 @@ main = defaultMain $ do
 
     command "config" $ do
         description "print the config read from the environment and quit"
-        action $ \_ _ -> do
+        action $ \_ -> do
             withConfig $ \context -> do
                 mapM_ (putStrLn . show) (contextProviders context)
     command "import" $ do
@@ -90,12 +90,12 @@ main = defaultMain $ do
         tagD   <- flagArg (FlagLong "tag" <> FlagShort 't' <> FlagDescription "add a tag") (FlagRequired Right)
 
         argDescs <- remainingArguments "arguments"
-        action $ \getFlag getArg -> do
+        action $ \toParam -> do
             disp <- displayInit
             withConfig $ \context -> do
                 let provs = contextProviders context
-                let args = getArg argDescs
-                    repo = getFlag repoD
+                let args = toParam argDescs
+                    repo = toParam repoD
 
                 forM_ args $ \filePath -> do
                     let ext = takeExtension filePath

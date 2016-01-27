@@ -16,13 +16,13 @@ import           Data.Functor.Identity
 import           Console.Options hiding (defaultMain)
 
 commandFoo = command "foo" $ do
-    action $ \a _ -> return True
+    action $ \toParam -> return True
 
 --commandBar :: Monad m => OptionDesc (m Bool) ()
 commandBar :: OptionDesc (Identity Bool) ()
 commandBar = command "bar" $ do
     a <- flagArg (FlagShort 'a' <> FlagLong "aaa") (FlagRequired Right)
-    action $ \a _ -> do
+    action $ \toParam -> do
         return True
 
 testParseHelp name f = testProperty name $ runIdentity $ do
@@ -34,8 +34,8 @@ testParseSuccess name f =
     testProperty name $ runIdentity $ do
         let (_,r) = f
          in case r of
-                OptionSuccess f -> f
-                _               -> return False
+                OptionSuccess p act -> act (getParams p)
+                _                   -> return False
 
 main = defaultMain $ testGroup "options"
     [ testGroup "help"
