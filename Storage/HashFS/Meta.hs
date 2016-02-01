@@ -3,20 +3,35 @@
 {-# LANGUAGE Rank2Types #-}
 module Storage.HashFS.Meta
     ( MetaProvider
+    , Tag(..)
+    , Category(..)
     , metaConnect
     , metaCommit
     , metaDigestGetTags
     , metaDigestRemoveTags
+    , metaFindDigestsByTagWhere
     , metaTagGetDigests
     , metaFindDigestsNotTagged
     , metaCreateTag
     , metaFindTag
+    , metaRenameTag
     , metaAddData
     -- * tagging
     , metaTag
     , metaUntag
     -- * objects
+    , TagQuery(..  )
     , DataInfo(..)
+    , DataQuery(..)
+    , DateOperator(..)
+    , DateField(..)
+    , DataNumField(..)
+    , NumOperator(..)
+    , StrOperator(..)
+    , dataSelectorQuery
+    -- * Date
+    , dateFromElapsed
+    , dateToElapsed
     ) where
 
 import Control.Applicative
@@ -26,10 +41,11 @@ import Crypto.Hash
 import Database.HDBC
 import Database.HDBC.Sqlite3
 import Data.Word
+import Data.Sql
 import System.Directory
 import Storage.HashFS.Types
 import System.Hourglass
-import Data.Hourglass
+import Data.Hourglass hiding (DateTime)
 
 data MetaProviderSQL = forall conn . IConnection conn => MetaProviderSQL conn
 
@@ -40,6 +56,48 @@ instance Show MetaProvider where
     show (MetaProviderBackendSQL _) = "MetaProviderBackendSQL {..}"
 instance Eq MetaProvider where -- not quite valid ..
     (==) (MetaProviderBackendSQL {}) (MetaProviderBackendSQL {}) = True
+
+data Category = Group | Person | Other
+    deriving (Show,Eq,Ord)
+
+data Tag = Tag (Maybe Category) String
+    deriving (Show,Eq,Ord)
+
+newtype DateTime = DateTime Word64
+    deriving (Show,Eq)
+
+dateFromElapsed :: Elapsed -> DateTime
+dateFromElapsed (Elapsed (Seconds v)) = DateTime $ fromIntegral v
+
+dateToElapsed :: DateTime -> Elapsed
+dateToElapsed (DateTime t) = Elapsed (Seconds $ fromIntegral t)
+
+printCategory :: Category -> Char
+printCategory cat =
+    case cat of
+        Group  -> 'g'
+        Person -> 'p'
+        Other  -> 'o'
+
+parseCategory :: Char -> Maybe Category
+parseCategory 'g' = Just Group
+parseCategory 'p' = Just Person
+parseCategory 'o' = Just Other
+parseCategory _   = Nothing
+
+tagFromString :: String -> Tag
+tagFromString s =
+    case s of
+        c:':':r ->
+            case parseCategory c of
+                Just cat -> Tag (Just cat) r
+                Nothing  -> Tag Nothing s
+        _ ->
+            Tag Nothing s
+
+tagToString :: Tag -> String
+tagToString (Tag (Just cat) s) = printCategory cat : ':' : s
+tagToString (Tag Nothing    s) = s
 
 -- Local provider create 3 tables
 --
@@ -52,18 +110,105 @@ data IndexTag
 
 newtype Index idx = Index Integer
 
-type Tag = String
+--type Tag = String
 
 data DataInfo = DataInfo
     { dataSize     :: Word64 -- in bytes
-    , dataDate     :: Maybe Word64 -- unix seconds
+    , dataDate     :: Maybe Elapsed -- unix seconds
     , dataDirName  :: Maybe String
     , dataFileName :: Maybe String
     }
     deriving (Show,Eq)
 
+data TagQuery =
+      TagEqual Tag
+    | TagNotEqual Tag
+    | TagCat Category
+    | TagLike Category String
+    | Or TagQuery TagQuery
+    | And TagQuery TagQuery
+
+data DataNumField = Rating | Security
+    deriving (Show,Eq)
+
+data NumOperator =
+      (:==) DataNumField
+    | (:/=) DataNumField
+    | (:<) DataNumField
+    | (:>) DataNumField
+    | (:<=) DataNumField
+    | (:>=) DataNumField
+    deriving (Show,Eq)
+
+data StrOperator = Contains | StartWith | EndsWith
+    deriving (Show,Eq)
+
+data DateOperator =
+      Before Included DateTime
+    | After Included DateTime
+    | Between Included DateTime Included DateTime
+    deriving (Show,Eq)
+
+data Included = Included | NotIncluded
+    deriving (Show,Eq)
+
+--type Date = Word64
+data DateField = Itime | Mtime
+    deriving (Show,Eq)
+
+data DataQuery =
+      DataNum NumOperator Int
+    | DataFilename StrOperator String
+    | DataDate DateField DateOperator
+    | DataAnd DataQuery DataQuery
+    | DataOr DataQuery DataQuery
+
+dataSelectorQuery :: DataQuery -> String
+dataSelectorQuery = sqlQuery . transform
+  where
+    rating   = sqlFN "rating"
+    security = sqlFN "security"
+    filename = sqlFN "filename"
+    mtime    = sqlFN "mtime"
+    itime    = sqlFN "itime"
+
+    transform (DataOr d1 d2)          = transform d1 :||: transform d2
+    transform (DataAnd d1 d2)         = transform d1 :&&: transform d2
+    transform (DataNum numOp v) =
+        let f field = case field of
+                    Rating   -> rating
+                    Security -> security
+         in case numOp of
+                (:==) field -> f field :==: (ValInt v)
+                (:/=) field -> f field :/=: (ValInt v)
+                (:<=) field -> f field :<=: v
+                (:>=) field -> f field :>=: v
+                (:<)  field -> f field :<: v
+                (:>)  field -> f field :>: v
+    transform (DataFilename strOp s) =
+        case strOp of
+            Contains  -> filename :~~: ("%" ++ s ++ "%")
+            StartWith -> filename :~~: (s ++ "%")
+            EndsWith  -> filename :~~: ("%" ++ s)
+    transform (DataDate dateField dateOp) =
+        let f = case dateField of
+                    Mtime -> mtime
+                    Itime -> itime
+         in case dateOp of
+                Before NotIncluded d     -> f :<: elapsedToInt d
+                Before Included d        -> f :<=: elapsedToInt d
+                After NotIncluded d      -> f :>: elapsedToInt d
+                After Included d         -> f :>=: elapsedToInt d
+                Between ic1 d1 ic2 d2    ->
+                         if ic1 == Included then (f :>=: elapsedToInt d1) else (f :>: elapsedToInt d1)
+                    :&&: if ic2 == Included then (f :<=: elapsedToInt d2) else (f :<: elapsedToInt d2)
+
+    elapsedToInt :: DateTime -> Int
+    elapsedToInt (DateTime s) = fromIntegral s
+
+
 tagName :: Tag -> String
-tagName = id
+tagName = tagToString
 
 metaConnect :: String -> String -> IO (Either String MetaProvider)
 metaConnect ty path =
@@ -86,6 +231,9 @@ metaTagGetDigests (MetaProviderBackendSQL sql) = dbTagGetDigests sql
 metaFindDigestsNotTagged :: HashAlgorithm h => MetaProvider -> IO [Digest h]
 metaFindDigestsNotTagged (MetaProviderBackendSQL sql) = dbFindDigestsNotTagged sql
 
+metaFindDigestsByTagWhere :: HashAlgorithm h => MetaProvider -> TagQuery -> IO [Digest h]
+metaFindDigestsByTagWhere (MetaProviderBackendSQL sql) = dbGetDigestsByTagsWhere sql
+
 metaCreateTag :: MetaProvider -> Tag -> IO (Index IndexTag)
 metaCreateTag (MetaProviderBackendSQL sql) = dbCreateTag sql
 
@@ -98,6 +246,9 @@ metaTag (MetaProviderBackendSQL sql) = dbAddTag sql
 metaFindTag :: MetaProvider -> Tag -> IO (Maybe (Index IndexTag))
 metaFindTag (MetaProviderBackendSQL sql) = dbFindTag sql
 
+metaRenameTag :: MetaProvider -> Tag -> Tag -> IO ()
+metaRenameTag (MetaProviderBackendSQL sql) = dbRenameTag sql
+
 metaAddData :: HashAlgorithm h => MetaProvider -> Digest h -> DataInfo -> IO ()
 metaAddData (MetaProviderBackendSQL sql) = dbAddData sql
 
@@ -105,15 +256,49 @@ localMetaCreate :: FilePath -> IO MetaProvider
 localMetaCreate metaPath = do
     exists <- doesFileExist metaPath
     conn   <- connectSqlite3 metaPath
-    unless exists $ initializeTable conn
+    if exists
+        then checkDatabase conn
+        else initializeDatabase conn
     return $ MetaProviderBackendSQL $ MetaProviderSQL conn
 
-initializeTable :: IConnection conn => conn -> IO ()
-initializeTable conn = do
+checkDatabase :: IConnection conn => conn -> IO ()
+checkDatabase conn = do
+    r <- quickQuery conn query []
+    case r of
+        []         -> error "invalid database format. no version found"
+        [[sqlVer]] -> checkUpgrade (fromSql sqlVer)
+        _          -> error "expecting version lin"
+  where
+    query = "SELECT sql_schema FROM version"
+
+    checkUpgrade :: Int -> IO ()
+    checkUpgrade ver =
+        case ver `compare` latestSupported of
+            EQ -> return ()
+            LT -> error ("database schema need upgrading")
+            GT -> error ("unknown version " ++ show ver ++ " of this table. latest known version: " ++ show latestSupported)
+
+latestSupported :: Int
+latestSupported = 1
+
+initializeDatabase :: IConnection conn => conn -> IO ()
+initializeDatabase conn = do
     mapM_ (flip (run conn) [])
-        [ "CREATE TABLE data (id INTEGER PRIMARY KEY, hash VARCHAR(80) NOT NULL, size WORD64, itime WORD64, date WORD64, dirname VARCHAR(4096), filename VARCHAR(1024))"
-        , "CREATE TABLE tag (id INTEGER PRIMARY KEY, name VARCHAR(128))"
+        [ "CREATE TABLE version (sql_schema INTEGER NOT NULL)"
+        , sqlCreate (TableName "data")
+                [Field "id" "INTEGER PRIMARY KEY"
+                ,Field "hash" "VARCHAR(80) NOT NULL"
+                ,Field "size" "WORD64"
+                ,Field "itime" "WORD64"
+                ,Field "date" "WORD64"
+                ,Field "dirname" "VARCHAR(4096)"
+                ,Field "filename" "VARCHAR(1024)"
+                ,Field "security" "INT"
+                ,Field "rating" "INT"
+                ]
+        , "CREATE TABLE tag (id INTEGER PRIMARY KEY, name VARCHAR(128), date WORD64)"
         , "CREATE TABLE tagmap (data_id INTEGER NOT NULL, tag_id INTEGER NOT NULL, UNIQUE(data_id, tag_id) ON CONFLICT REPLACE)"
+        , "INSERT INTO version (sql_schema) VALUES (" ++ show latestSupported ++ ")"
         ]
     commit conn
 
@@ -124,8 +309,8 @@ dbAddTag :: MetaProviderSQL -> Digest h -> Tag -> IO ()
 dbAddTag (MetaProviderSQL conn) digest tag = do
     stmt <- prepare conn query
     void $ execute stmt []
-  where query = "INSERT INTO tagmap (data_id, tag_id) SELECT data.id, tag.id FROM data, tag WHERE data.hash = '"
-            ++ digestToDb digest ++ "' AND tag.name = '" ++ tag ++ "'"
+  where query = "INSERT INTO tagmap (data_id, tag_id) SELECT data.id, tag.id FROM data, tag WHERE data.hash = "
+            ++ sqlShowString (digestToDb digest) ++ " AND tag.name = " ++ sqlShowString (tagName tag)
 
 dbAddData :: MetaProviderSQL -> Digest h -> DataInfo -> IO ()
 dbAddData (MetaProviderSQL conn) digest dataInfo = do
@@ -134,17 +319,22 @@ dbAddData (MetaProviderSQL conn) digest dataInfo = do
     void $ execute stmt [ toSql (digestToDb digest)
                         , toSql (dataSize dataInfo)
                         , toSql c
-                        , maybe SqlNull toSql $ dataDate dataInfo
+                        , maybe SqlNull sqlElapsed $ dataDate dataInfo
                         , toSql (maybe "" id $ dataDirName dataInfo)
                         , toSql (maybe "" id $ dataFileName dataInfo)
+                        , toSql (0 :: Int)
+                        , toSql (0 :: Int)
                         ]
   where
-    query = "INSERT INTO data (hash, size, itime, date, dirname, filename) VALUES (?,?,?,?,?,?)" -- hash, size, itime, date, dirname, filename
+    query = "INSERT INTO data (hash, size, itime, date, dirname, filename, security, rating) VALUES (?,?,?,?,?,?,?,?)" -- hash, size, itime, date, dirname, filename, security, rating
+
+sqlElapsed :: Elapsed -> SqlValue
+sqlElapsed (Elapsed (Seconds s)) = toSql (fromIntegral s :: Word64)
 
 dbDigestRemoveTags :: HashAlgorithm h => MetaProviderSQL -> Digest h -> IO ()
 dbDigestRemoveTags conn digest = run_ conn query []
   where
-    query = "DELETE FROM tagmap WHERE data_id IN (SELECT id FROM data WHERE hash = '" ++ digestToDb digest ++ "')"
+    query = "DELETE FROM tagmap WHERE data_id IN (SELECT id FROM data WHERE hash = " ++ sqlShowString (digestToDb digest) ++ ")"
 
 dbUntag :: HashAlgorithm h => MetaProviderSQL -> Digest h -> Tag -> IO ()
 dbUntag conn digest tag = do
@@ -157,7 +347,7 @@ dbUntag conn digest tag = do
         ["DELETE FROM tagmap WHERE "
         , "tag_id = " ++ show (getPrimaryKey iTag)
         , " AND "
-        , "data_id IN (SELECT id FROM data WHERE hash = '" ++ digestToDb digest ++ "')"
+        , "data_id IN (SELECT id FROM data WHERE hash = " ++ sqlShowString (digestToDb digest) ++ ")"
         ]
 
 -- | Create a specific tag
@@ -168,36 +358,47 @@ dbCreateTag sqlConn@(MetaProviderSQL conn) tag = do
     mt <- dbFindTag sqlConn tag
     case mt of
         Nothing -> do
+            Elapsed (Seconds currentTime) <- timeCurrent
             stmt <- prepare conn queryInsertTag
-            insertAndGetID sqlConn stmt [toSql (tagName tag)]
+            insertAndGetID sqlConn stmt [toSql (tagName tag), toSql currentTime]
         Just t  -> return t
-  where queryInsertTag = "INSERT INTO tag (name) VALUES (?)"
+  where queryInsertTag = "INSERT INTO tag (name, date) VALUES (?, ?)"
 
 -- | Try to find the key associated to a Tag
 --
 -- fix SQL escape
 dbFindTag :: MetaProviderSQL -> Tag -> IO (Maybe (Index IndexTag))
 dbFindTag (MetaProviderSQL conn) tag = do
-    r <- quickQuery conn ("SELECT id FROM tag WHERE name='" ++ tagName tag ++ "'") []
+    r <- quickQuery conn ("SELECT id FROM tag WHERE name=" ++ sqlShowString (tagName tag)) []
     case r of
         []      -> return Nothing
         [[uid]] -> return $ Just $ Index $ fromSql uid
         _       -> error ("dbFindTag: " ++ show tag ++ " unexpected sql output format " ++ show r)
 
+dbRenameTag :: MetaProviderSQL -> Tag -> Tag -> IO ()
+dbRenameTag prov@(MetaProviderSQL conn) oldTag newTag = do
+    mti <- dbFindTag prov oldTag
+    case mti of
+        Nothing -> return ()
+        Just ti -> do
+            let q = "UPDATE tag SET name=" ++ sqlShowString (tagName newTag) ++ " WHERE id = " ++ show (getPrimaryKey ti)
+            stmt <- prepare conn q
+            _    <- execute stmt []
+            return ()
 
 dbDigestGetTags :: MetaProviderSQL -> Digest h -> IO [Tag]
 dbDigestGetTags (MetaProviderSQL conn) digest = do
     let query = mconcat
             [ "SELECT tag.name FROM tag where tag.id IN ("
                 , "SELECT tagmap.tag_id FROM tagmap WHERE tagmap.data_id = ("
-                    , "SELECT data.id FROM data WHERE hash='" ++ digestToDb digest ++ "'"
+                    , "SELECT data.id FROM data WHERE hash=" ++ sqlShowString (digestToDb digest)
                 , ")"
             , ")"
             ]
     map toRet <$> quickQuery conn query []
   where
     toRet :: [SqlValue] -> Tag
-    toRet [x] = fromSql x
+    toRet [x] = tagFromString $ fromSql x
     toRet _   = error "dbDigetGetTags: internal error: query returned invalid number of items"
 
 dbTagGetDigests :: HashAlgorithm h => MetaProviderSQL -> Tag -> IO [Digest h]
@@ -205,7 +406,7 @@ dbTagGetDigests (MetaProviderSQL conn) tag = do
     let query = mconcat
             [ "SELECT data.hash FROM data where data.id IN ("
                 , "SELECT tagmap.data_id FROM tagmap WHERE tagmap.tag_id = ("
-                    , "SELECT tag.id FROM tag WHERE name='" ++ tag ++ "'"
+                    , "SELECT tag.id FROM tag WHERE name=" ++ sqlShowString (tagName tag)
                 , ")"
             , ")"
             ]
@@ -240,6 +441,34 @@ dbFindDigestsNotTagged (MetaProviderSQL conn) = do
     toRet [x] = digestFromDb $ fromSql x
     toRet _   = error "dbDigetGetTags: internal error: query returned invalid number of items"
 
+queryFindTagsWhere :: TagQuery -> String
+queryFindTagsWhere query =
+    "SELECT tag.id FROM tag WHERE " ++ sqlQuery (transform query)
+  where
+    n = sqlFN "name"
+
+    transform (And q1 q2)     = transform q1 :&&: transform q2
+    transform (Or q1 q2)      = transform q1 :||: transform q2
+    transform (TagEqual t)    = n :==: ValString (tagToString t)
+    transform (TagNotEqual t) = n :/=: ValString (tagToString t)
+    transform (TagLike c t)   = n :~~: (printCategory c : ":" ++ t)
+    transform (TagCat c)      = n :~~: (printCategory c : ":%")
+
+dbGetDigestsByTagsWhere :: HashAlgorithm h => MetaProviderSQL -> TagQuery -> IO [Digest h]
+dbGetDigestsByTagsWhere (MetaProviderSQL conn) tagQuery = do
+    let query = mconcat
+            [ "SELECT data.hash FROM data where data.id IN ("
+                , "SELECT tagmap.data_id FROM tagmap WHERE tagmap.tag_id = ("
+                    , queryFindTagsWhere tagQuery
+                , ")"
+            , ")"
+            ]
+    map toRet <$> quickQuery conn query []
+  where
+    toRet :: HashAlgorithm h => [SqlValue] -> Digest h
+    toRet [x] = digestFromDb $ fromSql x
+    toRet _   = error "dbDigetGetTags: internal error: query returned invalid number of items"
+
 -- | execute a statement (that should be insert)
 -- and return the last inserted rowid (primary key)
 insertAndGetID :: MetaProviderSQL -> Statement -> [SqlValue] -> IO (Index a)
@@ -261,7 +490,7 @@ run_ (MetaProviderSQL conn) query args = void $ liftIO $ run conn query args
 
 dbResolveTag :: MetaProviderSQL -> Tag -> IO (Maybe (Index IndexTag))
 dbResolveTag (MetaProviderSQL conn) tag = do
-    r <- quickQuery conn ("SELECT id FROM tag WHERE name='" ++ tagName tag ++ "'") []
+    r <- quickQuery conn ("SELECT id FROM tag WHERE name=" ++ sqlShowString (tagName tag)) []
     case r of
         _:_:_   -> error ("duplicate tag instance in database: " ++ show tag)
         [[uid]] -> return $ Just $ Index $ fromSql uid
@@ -270,6 +499,7 @@ dbResolveTag (MetaProviderSQL conn) tag = do
 getPrimaryKey :: Index a -> Integer
 getPrimaryKey (Index i) = i
 
+-- escape a string with potential SQL escape to a safe (?) sql string
 {- old API / queries : might need reviving
 
 dbResolveDigest :: MetaProviderSQL -> Digest h -> IO (Maybe (Index IndexData))

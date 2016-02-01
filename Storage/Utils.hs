@@ -8,8 +8,9 @@ import           System.Posix.Files hiding (isDirectory)
 import           System.FilePath ((</>), dropTrailingPathSeparator, dropFileName)
 import           Data.Time.Clock.POSIX (POSIXTime)
 import           Data.Word
+import           Data.Hourglass
 
-type ModificationTime = POSIXTime
+type ModificationTime = Elapsed
 
 type FileSize = Word64
 
@@ -18,5 +19,5 @@ getFileInfo :: FilePath -> IO (FileSize, ModificationTime)
 getFileInfo path = do
     fstat <- getFileStatus path
     return ( fromIntegral $ fileSize fstat
-           , realToFrac $ modificationTime fstat
+           , Elapsed $ Seconds $ (floor $ (realToFrac $ modificationTime fstat :: Double))
            )

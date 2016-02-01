@@ -12,6 +12,7 @@ module Console.Options.Types
     , Flag(..)
     , FlagLevel(..)
     , FlagParam(..)
+    , FlagMany(..)
     , Arg(..)
     , ArgRemaining(..)
     , Params(..)
@@ -43,6 +44,8 @@ data FlagLevel a where
 data FlagParam a where
     FlagParamOpt     :: Nid -> a -> (String -> a) -> FlagParam a
     FlagParam        :: Nid -> (String -> a) -> FlagParam a
+
+newtype FlagMany a = FlagMany (FlagParam a)
 
 data Arg a where
     Arg           :: UnnamedIndex -> (String -> a) -> Arg a
@@ -89,7 +92,6 @@ param :: optional on command line but with a value
 arg :: required on command line
     | required value (itself) -> a
 -}
-
 instance Param Flag where
     type Ret Flag a = Bool
     getParams (Params flagArgs _ _) (Flag nid) =
@@ -110,6 +112,14 @@ instance Param FlagParam where
             Just Nothing      -> error "internal error: parameter is missing" -- something is wrong with the flag parser
             Just (Just param) -> Just (p param)
             Nothing           -> Nothing
+instance Param FlagMany where
+    type Ret FlagMany a = [a]
+    getParams (Params flagArgs _ _) (FlagMany (FlagParamOpt nid a p)) =
+        let margs = map snd $ filter ((== nid) . fst) flagArgs
+         in map (maybe a p) margs
+    getParams (Params flagArgs _ _) (FlagMany (FlagParam nid p)) =
+        let margs = map snd $ filter ((== nid) . fst) flagArgs
+         in map (maybe (error "") p) margs
 instance Param Arg where
     type Ret Arg a = a
     getParams (Params _ unnamedArgs _) (Arg index p) =

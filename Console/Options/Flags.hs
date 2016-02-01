@@ -7,7 +7,7 @@ module Console.Options.Flags
     , FlagArgDesc(..)
     , FlagError(..)
     -- * fragments
-    , FlagFrag(..)
+    , FlagFrag(FlagShort, FlagLong, FlagDescription)
     , flattenFragments
     ) where
 
@@ -25,6 +25,7 @@ data FlagDesc = FlagDesc
     , flagNid           :: Nid                    -- ^ flag number. internal value
     , flagArg           :: FlagArgDesc            -- ^ parser for the argument to an flag
     , flagArgValidate   :: String -> FlagArgValidation -- ^ if the argument doesn't validate, return the error message associated, otherwise Nothing
+    , flagArity         :: Int
     }
 
 data FlagFrag =

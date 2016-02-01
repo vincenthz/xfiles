@@ -17,9 +17,10 @@ module Console.Options
     , programVersion
     , programDescription
     , command
-    , flag
     , FlagFrag(..)
-    , flagArg
+    , flag
+    , flagParam
+    , flagMany
     , conflict
     , argument
     , remainingArguments
@@ -29,6 +30,9 @@ module Console.Options
     -- * Arguments
     , FlagParser(..)
     , Flag
+    , FlagLevel
+    , FlagParam
+    , FlagMany
     , Arg
     , ArgRemaining
     , Params(..)
@@ -65,6 +69,15 @@ setAction act (Command hier desc opts _)   = Command hier desc opts (Just act)
 
 addOption :: FlagDesc -> Command r -> Command r
 addOption opt   (Command hier desc opts act) = Command hier desc (opt : opts) act
+
+tweakOption :: Nid -> (FlagDesc -> FlagDesc) -> Command r -> Command r
+tweakOption nid mapFlagDesc (Command hier desc opts act) =
+    Command hier desc (modifyNid opts) act
+  where
+    modifyNid []           = []
+    modifyNid (f:fs)
+        | flagNid f == nid = mapFlagDesc f : fs
+        | otherwise        = f : modifyNid fs
 
 addArg :: Argument -> Command r -> Command r
 addArg arg = modifyHier $ \hier ->
@@ -258,8 +271,8 @@ action ioAct = modify $ \st -> st { stCT = setAction ioAct (stCT st) }
 -- | Flag option either of the form -short or --long
 --
 -- for flag that doesn't have parameter, use 'flag'
-flagArg :: FlagFrag -> FlagParser a -> OptionDesc r (FlagParam a)
-flagArg frag fp = do
+flagParam :: FlagFrag -> FlagParser a -> OptionDesc r (FlagParam a)
+flagParam frag fp = do
     nid <- getNextID
 
     let fragmentFlatten = flattenFragments frag
@@ -269,6 +282,7 @@ flagArg frag fp = do
                 , flagNid         = nid
                 , F.flagArg       = argp
                 , flagArgValidate = validator
+                , flagArity       = 1
                 }
 
     modify $ \st -> st { stCT = addOption opt (stCT st) }
@@ -286,6 +300,15 @@ flagArg frag fp = do
 
     isValid f = either FlagArgInvalid (const FlagArgValid) . f
 
+flagMany :: OptionDesc r (FlagParam a) -> OptionDesc r (FlagMany a)
+flagMany fp = do
+    f <- fp
+    let nid = case f of
+                FlagParamOpt n _ _ -> n
+                FlagParam n _      -> n
+    modify $ \st -> st { stCT = tweakOption nid (\fd -> fd { flagArity = maxBound }) (stCT st) }
+    return $ FlagMany f
+
 -- | Flag option either of the form -short or --long
 --
 -- for flag that expect a value (optional or mandatory), uses 'flagArg'
@@ -300,6 +323,7 @@ flag frag = do
                 , flagNid         = nid
                 , F.flagArg       = FlagArgNone
                 , flagArgValidate = error ""
+                , flagArity       = 0
                 }
 
     modify $ \st -> st { stCT = addOption opt (stCT st) }

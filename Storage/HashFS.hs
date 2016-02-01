@@ -35,6 +35,8 @@ module Storage.HashFS
     , pushFromTo
     , Context(..)
     , MetaProvider
+    , Tag(..)
+    , Category(..)
     -- * Providers
     , Providers
     , Provider(..)
@@ -77,6 +79,7 @@ data Trunk h = TrunkGroup
     , trunkGroupRouting      :: Int
     }
 -}
+
 
 data Context h = Context
     { contextProviders  :: [Provider h]
@@ -158,8 +161,9 @@ withConfig f = do
             unknown -> error ("unknown database type: " ++ unknown)
 
     toMeta :: HashAlgorithm h => h -> ConfigMeta -> IO MetaProvider
-    toMeta _ meta =
-        either error id <$> metaConnect (configMetaType meta) (configMetaPath meta)
+    toMeta _ meta = do
+        path <- normalizeLocalPath (configMetaPath meta)
+        either error id <$> metaConnect (configMetaType meta) path
 
 existsIn :: HashAlgorithm h => ProviderBackend h -> Digest h -> IO Bool
 existsIn (ProviderLocal conf) digest = Local.exists conf digest
@@ -187,12 +191,37 @@ findAllDigest providers digest = loop [] providers
 existsDigest :: HashAlgorithm h => Providers h -> Digest h -> IO Bool
 existsDigest providers digest = maybe False (const True) <$> findDigest providers digest
 
--- | Import a file into a provider and return the digest
-importInto :: HashAlgorithm h => Provider h -> Local.ImportType -> FilePath -> IO (Digest h)
-importInto provider importType filePath =
+-- | Import a file into a provider and return the digest.
+--
+-- it also return whether or not the digest was already present
+-- in this provider.
+importInto :: HashAlgorithm h
+           => Maybe (MetaProvider, DataInfo, [Tag])
+           -> Provider h
+           -> Local.ImportType
+           -> FilePath
+           -> IO (Bool, Digest h)
+importInto withMeta provider importType filePath =
     case providerBackend provider of
-        ProviderLocal local -> Local.importFile local importType filePath
+        ProviderLocal local -> do
+            (duplicated, digest) <- Local.importFile local importType filePath
+            case withMeta of
+                Nothing                                 -> return ()
+                Just (metaProv, metaDataInfo, metaTags) -> do
+                    metaAddData metaProv digest metaDataInfo
+                    forM_ metaTags $ \tag -> do
+                        _ <- metaCreateTag metaProv tag
+                        metaTag metaProv digest tag
+                    metaCommit metaProv
+                    return ()
+            return (duplicated, digest)
         ProviderRemote _    -> error "remote import not implemented"
+
+{-
+setTags :: HashAlgorithm h => Context -> Digest h -> [Tag] -> IO ()
+setTags c digest tags =
+    contextMetaviders c
+-}
 
 -- | Import a file into a provider with a specific digest value
 importIntoAt :: HashAlgorithm h => Provider h -> Local.ImportType -> Digest h -> FilePath -> IO ()

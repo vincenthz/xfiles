@@ -135,9 +135,9 @@ importFile :: (Show h, HashAlgorithm h)
 importFile itype dataCat mDate mFilename tags rfile = do
     current <- liftIO getCurrentDirectory
     let file = if isRelative rfile then current </> rfile else rfile
-    info   <- liftIO $ getFileInfo file
-    digest <- runHFS $ \conf -> HFS.importInto (head conf) itype file -- FIXME choose the HEAD
-    key    <- dbResolveDigest digest
+    info        <- liftIO $ getFileInfo file
+    (_, digest) <- runHFS $ \conf -> HFS.importInto Nothing (head conf) itype file -- FIXME choose the HEAD
+    key         <- dbResolveDigest digest
     case key of
         Nothing -> do
             ty <- getQuarryFileType file

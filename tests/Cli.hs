@@ -15,13 +15,16 @@ import           Data.Functor.Identity
 
 import           Console.Options hiding (defaultMain)
 
+flagA = flagParam (FlagShort 'a' <> FlagLong "aaa") (FlagRequired Right)
+flagB = flagParam (FlagShort 'b' <> FlagLong "bbb") (FlagRequired Right)
+
 commandFoo = command "foo" $ do
     action $ \toParam -> return True
 
 --commandBar :: Monad m => OptionDesc (m Bool) ()
 commandBar :: OptionDesc (Identity Bool) ()
 commandBar = command "bar" $ do
-    a <- flagArg (FlagShort 'a' <> FlagLong "aaa") (FlagRequired Right)
+    a <- flagA
     action $ \toParam -> do
         return True
 
@@ -30,11 +33,11 @@ testParseHelp name f = testProperty name $ runIdentity $ do
         OptionHelp -> return True
         _          -> return False
 
-testParseSuccess name f =
+testParseSuccess name values f =
     testProperty name $ runIdentity $ do
         let (_,r) = f
          in case r of
-                OptionSuccess p act -> act (getParams p)
+                OptionSuccess p act -> return (sort values == sort (paramsFlags p)) --act (getParams p)
                 _                   -> return False
 
 main = defaultMain $ testGroup "options"
@@ -43,7 +46,7 @@ main = defaultMain $ testGroup "options"
         , testParseHelp "2" $ parseOptions (commandBar) ["options", "argument", "-h", "a"]
         ]
     , testGroup "success"
-        [ testParseSuccess "1" $ parseOptions (commandBar) ["bar", "-a", "option-a"]
-        , testParseSuccess "2" $ parseOptions (commandBar >> commandFoo) ["foo", "a"]
+        [ testParseSuccess "1" [] $ parseOptions (commandBar) ["bar", "-a", "option-a"]
+        , testParseSuccess "2" [] $ parseOptions (commandBar >> commandFoo) ["foo", "a"]
         ]
     ]

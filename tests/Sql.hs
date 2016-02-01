@@ -52,12 +52,14 @@ arbitraryFileContent = [ [x,y] | x <- ['a'..'b'], y <- ['a'..'z'] ]
 arbitraryDigest :: HashAlgorithm h => h -> [Digest h]
 arbitraryDigest hashAlg = map (hashWith hashAlg . BC.pack) arbitraryFileContent
 
-arbitraryTag :: [String]
-arbitraryTag = ["foo","bar","baz","time","eol","a","b","c"]
-    ++ map (("tag-" ++) . show) [15..124 :: Int]
-    ++ map (("group-" ++) . show) [14..84 :: Int]
+arbitraryTag :: [Tag]
+arbitraryTag = map (Tag (Just Other)) l
+  where
+    l = ["foo","bar","baz","time","eol","a","b","c"]
+        ++ map (("tag-" ++) . show) [15..124 :: Int]
+        ++ map (("group-" ++) . show) [14..84 :: Int]
 
-associateTags :: Int -> [Digest h] -> [String] -> [(Digest h, [String])]
+associateTags :: Int -> [Digest h] -> [Tag] -> [(Digest h, [Tag])]
 associateTags shuffle ds ts =
     combine (shuffle `mod` length tagList) (shuffleList shuffle ds)
   where
@@ -105,7 +107,7 @@ sqlQueriesWork hashAlg (SqlFile f) shuffle = do
     forM_ arbitraryTag $ \tag -> do
         found <- metaTagGetDigests conn tag
         let expected = map fst $ filter (\(_,ts) -> tag `elem` ts) ass
-        listCompare ("digest for " ++ tag ++ " missing ") expected found
+        listCompare ("digest for " ++ show tag ++ " missing ") expected found
 
     forM_ dgs $ \dg -> do
         found <- metaDigestGetTags conn dg

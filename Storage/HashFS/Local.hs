@@ -66,19 +66,19 @@ createHier conf hsh = do
 copyFileToHash :: HashAlgorithm h
                => HashFSConf h
                -> ((Context h -> ByteString -> IO (Context h)) -> Context h -> IO (Context h))
-               -> IO (Digest h)
+               -> IO (Bool, Digest h)
 copyFileToHash conf blocksAcc = do
     (tmpFile, tmpHandle) <- tmpfilePath conf
     hsh  <- hashFinalize <$> blocksAcc (copyAndHash tmpHandle) (hashInitialize (hashfsHash conf))
     liftIO $ hClose tmpHandle
     existsAlready <- exists conf hsh
     if existsAlready
-        then removeFile tmpFile >> return hsh
+        then removeFile tmpFile >> return (True, hsh)
         else do
             createHier conf hsh
             let destPath = getPath conf hsh
             liftIO $ rename tmpFile destPath
-            return hsh
+            return (False, hsh)
   where
     copyAndHash outHandle hashCtx block =
         B.hPut outHandle block >> return (hashUpdate hashCtx block)
@@ -173,7 +173,7 @@ data ImportType = ImportCopy | ImportSymlink | ImportHardlink
     deriving (Show,Eq)
 
 -- | import a file into a Hash Filesystem, and return the new digest
-importFile :: HashAlgorithm h => HashFSConf h -> ImportType -> FilePath -> IO (Digest h)
+importFile :: HashAlgorithm h => HashFSConf h -> ImportType -> FilePath -> IO (Bool, Digest h)
 importFile conf itype file = do
     case itype of
         ImportCopy     -> do
@@ -182,13 +182,17 @@ importFile conf itype file = do
         ImportSymlink  -> doImportLink True
         ImportHardlink -> doImportLink False
   where doImportLink isSymlink = do
-            digest   <- computeHash conf file
-            let destPath = getPath conf digest
-            createHier conf digest
-            liftIO $ if isSymlink
-                then createSymbolicLink file destPath
-                else createLink file destPath
-            return digest
+            digest        <- computeHash conf file
+            existsAlready <- exists conf digest
+            if existsAlready
+                then return (True, digest)
+                else do
+                    let destPath = getPath conf digest
+                    createHier conf digest
+                    liftIO $ if isSymlink
+                        then createSymbolicLink file destPath
+                        else createLink file destPath
+                    return (False, digest)
 
 -- | import a file to a specified Digest value. use with care.
 importFileAt :: HashAlgorithm h => HashFSConf h -> FilePath -> Digest h -> IO ()
