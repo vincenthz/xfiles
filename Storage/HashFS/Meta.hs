@@ -9,7 +9,7 @@ module Storage.HashFS.Meta
     , metaCommit
     , metaDigestGetTags
     , metaDigestRemoveTags
-    , metaFindDigestsByTagWhere
+    , metaFindDigestsWhich
     , metaTagGetDigests
     , metaFindDigestsNotTagged
     , metaCreateTag
@@ -163,14 +163,29 @@ data DataQuery =
     | DataAnd DataQuery DataQuery
     | DataOr DataQuery DataQuery
 
+tagSelectorQuery :: TagQuery -> String
+tagSelectorQuery query =
+    "SELECT tag.id FROM tag WHERE " ++ sqlQuery (transform query)
+  where
+    n = sqlFN "name"
+
+    transform (And q1 q2)     = transform q1 :&&: transform q2
+    transform (Or q1 q2)      = transform q1 :||: transform q2
+    transform (TagEqual t)    = n :==: ValString (tagToString t)
+    transform (TagNotEqual t) = n :/=: ValString (tagToString t)
+    transform (TagLike c t)   = n :~~: (printCategory c : ":" ++ t)
+    transform (TagCat c)      = n :~~: (printCategory c : ":%")
+
+
 dataSelectorQuery :: DataQuery -> String
 dataSelectorQuery = sqlQuery . transform
   where
-    rating   = sqlFN "rating"
-    security = sqlFN "security"
-    filename = sqlFN "filename"
-    mtime    = sqlFN "mtime"
-    itime    = sqlFN "itime"
+    table    = TableName "data"
+    rating   = sqlFQFN table "rating"
+    security = sqlFQFN table "security"
+    filename = sqlFQFN table "filename"
+    mtime    = sqlFQFN table "mtime"
+    itime    = sqlFQFN table "itime"
 
     transform (DataOr d1 d2)          = transform d1 :||: transform d2
     transform (DataAnd d1 d2)         = transform d1 :&&: transform d2
@@ -231,8 +246,8 @@ metaTagGetDigests (MetaProviderBackendSQL sql) = dbTagGetDigests sql
 metaFindDigestsNotTagged :: HashAlgorithm h => MetaProvider -> IO [Digest h]
 metaFindDigestsNotTagged (MetaProviderBackendSQL sql) = dbFindDigestsNotTagged sql
 
-metaFindDigestsByTagWhere :: HashAlgorithm h => MetaProvider -> TagQuery -> IO [Digest h]
-metaFindDigestsByTagWhere (MetaProviderBackendSQL sql) = dbGetDigestsByTagsWhere sql
+metaFindDigestsWhich :: HashAlgorithm h => MetaProvider -> Maybe DataQuery -> Maybe TagQuery -> IO [Digest h]
+metaFindDigestsWhich (MetaProviderBackendSQL sql) = dbGetDigestsWhich sql
 
 metaCreateTag :: MetaProvider -> Tag -> IO (Index IndexTag)
 metaCreateTag (MetaProviderBackendSQL sql) = dbCreateTag sql
@@ -295,6 +310,7 @@ initializeDatabase conn = do
                 ,Field "filename" "VARCHAR(1024)"
                 ,Field "security" "INT"
                 ,Field "rating" "INT"
+                ,Field "parent" "VARCHAR(80)"
                 ]
         , "CREATE TABLE tag (id INTEGER PRIMARY KEY, name VARCHAR(128), date WORD64)"
         , "CREATE TABLE tagmap (data_id INTEGER NOT NULL, tag_id INTEGER NOT NULL, UNIQUE(data_id, tag_id) ON CONFLICT REPLACE)"
@@ -441,30 +457,25 @@ dbFindDigestsNotTagged (MetaProviderSQL conn) = do
     toRet [x] = digestFromDb $ fromSql x
     toRet _   = error "dbDigetGetTags: internal error: query returned invalid number of items"
 
-queryFindTagsWhere :: TagQuery -> String
-queryFindTagsWhere query =
-    "SELECT tag.id FROM tag WHERE " ++ sqlQuery (transform query)
-  where
-    n = sqlFN "name"
-
-    transform (And q1 q2)     = transform q1 :&&: transform q2
-    transform (Or q1 q2)      = transform q1 :||: transform q2
-    transform (TagEqual t)    = n :==: ValString (tagToString t)
-    transform (TagNotEqual t) = n :/=: ValString (tagToString t)
-    transform (TagLike c t)   = n :~~: (printCategory c : ":" ++ t)
-    transform (TagCat c)      = n :~~: (printCategory c : ":%")
-
-dbGetDigestsByTagsWhere :: HashAlgorithm h => MetaProviderSQL -> TagQuery -> IO [Digest h]
-dbGetDigestsByTagsWhere (MetaProviderSQL conn) tagQuery = do
+dbGetDigestsWhich :: HashAlgorithm h => MetaProviderSQL -> Maybe DataQuery -> Maybe TagQuery -> IO [Digest h]
+dbGetDigestsWhich (MetaProviderSQL _)    Nothing   Nothing  = error "dbGetDigestsWhich: no query specified"
+dbGetDigestsWhich (MetaProviderSQL conn) dataQuery tagQuery = do
     let query = mconcat
-            [ "SELECT data.hash FROM data where data.id IN ("
-                , "SELECT tagmap.data_id FROM tagmap WHERE tagmap.tag_id = ("
-                    , queryFindTagsWhere tagQuery
-                , ")"
-            , ")"
+            [ "SELECT data.hash FROM data where "
+            , maybeAnd (\tq -> "data.id IN (SELECT tagmap.data_id FROM tagmap WHERE tagmap.tag_id = ("
+                            ++ tagSelectorQuery tq ++ "))") tagQuery
+                       (\dq -> dataSelectorQuery dq) dataQuery
             ]
     map toRet <$> quickQuery conn query []
   where
+    maybeAnd :: (x -> String) -> Maybe x
+             -> (y -> String) -> Maybe y
+             -> String
+    maybeAnd _  Nothing  _  Nothing  = error "internal error : no query specified"
+    maybeAnd _  Nothing  fy (Just y) = fy y
+    maybeAnd fx (Just x) _  Nothing  = fx x
+    maybeAnd fx (Just x) fy (Just y) = "(" ++ fx x ++ ") AND (" ++ fy y ++ ")"
+
     toRet :: HashAlgorithm h => [SqlValue] -> Digest h
     toRet [x] = digestFromDb $ fromSql x
     toRet _   = error "dbDigetGetTags: internal error: query returned invalid number of items"

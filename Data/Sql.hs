@@ -18,16 +18,17 @@ module Data.Sql
 import Data.List
 
 newtype TableName = TableName String
-newtype FieldName = FieldName String
+data FieldName = FieldName (Maybe String) String
 
 sqlFN   :: String -> FieldName
-sqlFN = FieldName
+sqlFN = FieldName Nothing
 
 sqlFQFN :: TableName -> String -> FieldName
-sqlFQFN (TableName _) s = FieldName s
+sqlFQFN (TableName tn) s = FieldName (Just tn) s
 
 instance Show FieldName where
-    show (FieldName f) = f -- SQL escape
+    show (FieldName Nothing f) = f -- SQL escape
+    show (FieldName (Just tn) f) = tn ++ "." ++ f -- SQL escape
 instance Show TableName where
     show (TableName f) = f -- SQL escape
 

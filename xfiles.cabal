@@ -283,6 +283,7 @@ Test-Suite test-sql
                    , QuickCheck
                    , cryptonite
                    , bytestring
+                   , hourglass
                    , xfiles
   ghc-options:       -Wall -fno-warn-orphans -fno-warn-missing-signatures -fwarn-tabs -fno-warn-unused-imports
 
