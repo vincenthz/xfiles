@@ -7,7 +7,31 @@ import qualified Data.ByteString.Char8 as BC
 
 import qualified Data.ByteArray.Encoding as B
 
-import Storage.HashFS.Hasher
+import           Storage.HashFS.Hasher
+import           Data.Word
+
+newtype DateTime = DateTime Word64
+    deriving (Show,Eq)
+
+data Category = Group | Person | Location | Other
+    deriving (Show,Eq,Ord)
+
+data Tag = Tag (Maybe Category) String
+    deriving (Show,Eq,Ord)
+
+printCategory :: Category -> Char
+printCategory cat =
+    case cat of
+        Group  -> 'g'
+        Person -> 'p'
+        Location -> 'l'
+        Other  -> 'o'
+
+tagToString :: Tag -> String
+tagToString (Tag (Just cat) s) = printCategory cat : ':' : s
+tagToString (Tag Nothing    s) = s
+
+
 
 -- | Configuration for HashFS
 data HashFSConf h = HashFSConf
