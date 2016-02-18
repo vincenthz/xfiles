@@ -107,7 +107,7 @@ defaultMainWith dsl args = do
      in case res of
         OptionError s          -> putStrLn s >> exitFailure
         OptionHelp             -> help (stMeta programDesc) (stCT programDesc) >> exitSuccess
-        OptionSuccess params r -> r (getParams params) -- (getFlag params) (getArg params)
+        OptionSuccess params r -> r (getParams params)
         OptionInvalid s        -> putStrLn s >> exitFailure
 
 parseOptions :: OptionDesc r () -> [String] -> (ProgramDesc r, OptionRes r)

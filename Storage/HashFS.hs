@@ -12,6 +12,7 @@ module Storage.HashFS
     , hashFile
     , hashFileContext
     , withConfig
+    , findProviderByName
     {-
     , initializeLocally
     , onDigestFile
@@ -60,6 +61,7 @@ module Storage.HashFS
 
 import           System.Directory
 import           Control.Monad
+import           Data.List (find)
 import           Storage.HashFS.Types
 import           Storage.HashFS.Path
 import           Storage.HashFS.Utils
@@ -86,6 +88,10 @@ data Context h = Context
     , contextMetaviders :: [MetaProvider]
     , contextHash       :: h
     } deriving (Show,Eq)
+
+findProviderByName :: Context h -> String -> Maybe (Provider h)
+findProviderByName ctx name =
+    find (\p -> providerName p == name) (contextProviders ctx)
 
 -- | Generic Provider
 data Provider h = Provider

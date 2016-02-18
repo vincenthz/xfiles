@@ -115,7 +115,7 @@ doImport disp metaTags repo args context = do
                 putStrLn "automatic import routing not implemented"
                 exitFailure
             Just repoName -> do
-                let prov = findProvider provs repoName
+                let prov = findProvider context repoName
 
                 di <- grabDataInfo (contextMetaviders context) filePath
 
@@ -138,6 +138,6 @@ grabDataInfo (m:_) fp = do
             , dataFileName = Just fileName
             })
 
-findProvider :: [Provider h] -> String -> Provider h
+findProvider :: Context h -> String -> Provider h
 findProvider provs name =
-    maybe (error $ "cannot find repository for " ++ name) id $ find (\p -> providerName p == name) provs
+    maybe (error $ "cannot find repository for " ++ name) id $ findProviderByName provs name
