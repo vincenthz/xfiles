@@ -18,25 +18,26 @@ import           Storage.HashFS.Types
 import           Data.Either (partitionEithers)
 import           Data.Char
 import           Data.Sql
+import           Text.Read
 
 data TagQuery =
       TagEqual Tag
     | TagNotEqual Tag
     | TagCat Category
     | TagLike Category String
-    | Or TagQuery TagQuery
-    | And TagQuery TagQuery
+    | TagOr TagQuery TagQuery
+    | TagAnd TagQuery TagQuery
 
 data DataNumField = FieldRating | FieldSecurity
     deriving (Show,Eq)
 
 data NumOperator =
-      (:==) DataNumField
-    | (:/=) DataNumField
-    | (:<) DataNumField
-    | (:>) DataNumField
-    | (:<=) DataNumField
-    | (:>=) DataNumField
+      (:==)
+    | (:/=)
+    | (:<)
+    | (:>)
+    | (:<=)
+    | (:>=)
     deriving (Show,Eq)
 
 data StrOperator = Contains | StartWith | EndsWith
@@ -56,7 +57,8 @@ data DateField = Itime | Mtime
     deriving (Show,Eq)
 
 data DataQuery =
-      DataNum NumOperator Int
+      DataNum DataNumField NumOperator Integer
+    | DataSize NumOperator Integer
     | DataFilename StrOperator String
     | DataDate DateField DateOperator
     | DataAnd DataQuery DataQuery
@@ -70,21 +72,17 @@ dataSelectorQuery = sqlQuery . transform
     security = sqlFQFN table "security"
     filename = sqlFQFN table "filename"
     mtime    = sqlFQFN table "mtime"
+    filesize = sqlFQFN table "filesize"
     itime    = sqlFQFN table "itime"
 
     transform (DataOr d1 d2)          = transform d1 :||: transform d2
     transform (DataAnd d1 d2)         = transform d1 :&&: transform d2
-    transform (DataNum numOp v) =
-        let f field = case field of
+    transform (DataNum fieldTy numOp v) =
+        let field = case fieldTy of
                     FieldRating   -> rating
                     FieldSecurity -> security
-         in case numOp of
-                (:==) field -> f field :==: (ValInt v)
-                (:/=) field -> f field :/=: (ValInt v)
-                (:<=) field -> f field :<=: v
-                (:>=) field -> f field :>=: v
-                (:<)  field -> f field :<: v
-                (:>)  field -> f field :>: v
+         in numTransform field numOp v
+    transform (DataSize numOp v) = numTransform filesize numOp v
     transform (DataFilename strOp s) =
         case strOp of
             Contains  -> filename :~~: ("%" ++ s ++ "%")
@@ -103,7 +101,16 @@ dataSelectorQuery = sqlQuery . transform
                          if ic1 == Included then (f :>=: elapsedToInt d1) else (f :>: elapsedToInt d1)
                     :&&: if ic2 == Included then (f :<=: elapsedToInt d2) else (f :<: elapsedToInt d2)
 
-    elapsedToInt :: DateTime -> Int
+    numTransform field numOp v =
+        case numOp of
+            (:==) -> field :==: (ValInt v)
+            (:/=) -> field :/=: (ValInt v)
+            (:<=) -> field :<=: v
+            (:>=) -> field :>=: v
+            (:<)  -> field :<: v
+            (:>)  -> field :>: v
+
+    elapsedToInt :: DateTime -> Integer
     elapsedToInt (DateTime s) = fromIntegral s
 
 tagSelectorQuery :: TagQuery -> String
@@ -112,8 +119,8 @@ tagSelectorQuery query =
   where
     n = sqlFN "name"
 
-    transform (And q1 q2)     = transform q1 :&&: transform q2
-    transform (Or q1 q2)      = transform q1 :||: transform q2
+    transform (TagAnd q1 q2)  = transform q1 :&&: transform q2
+    transform (TagOr q1 q2)   = transform q1 :||: transform q2
     transform (TagEqual t)    = n :==: ValString (tagToString t)
     transform (TagNotEqual t) = n :/=: ValString (tagToString t)
     transform (TagLike c t)   = n :~~: (printCategory c : ":" ++ t)
@@ -148,46 +155,83 @@ parseQuery queryString =
     parseQueryInner :: AtomExpr
                     -> Either String (Either DataQuery TagQuery)
     parseQueryInner e
-        | isData e  = either Left (Right . Left) $ toDataQuery e
-        | isTag e   = either Left (Right . Right) $ toTagQuery e
+        | isData e  = either Left (Right . Left) $ processAtomExpr (toDataQuery,DataAnd,DataOr) e
+        | isTag e   = either Left (Right . Right) $ processAtomExpr (toTagQuery,TagAnd,TagOr) e
         | otherwise = Left ("atom not a valid data or tag query: " ++ show e)
-        {-
-        data DataQuery =
-              DataNum NumOperator Int
-            | DataFilename StrOperator String
-            | DataDate DateField DateOperator
-            | DataAnd DataQuery DataQuery
-            | DataOr DataQuery DataQuery
-        -}
-    toDataQuery :: AtomExpr -> Either String DataQuery
-    toDataQuery (AtomAnd l)       =
-        case mapM toDataQuery l of
+
+    processAtomExpr params@(_,andConstr,_) (AtomAnd l) =
+        case mapM (processAtomExpr params) l of
             Left err     -> Left err
-            Right []     -> Left "toDataQuery: and: empty"
-            Right (x:xs) -> Right $ foldl DataAnd x xs
-    toDataQuery (AtomOr l)        =
-        case mapM toDataQuery l of
+            Right []     -> Left "processAtomExpr: and: empty"
+            Right (x:xs) -> Right $ foldl andConstr x xs
+    processAtomExpr params@(_,_,orConstr) (AtomOr l)        =
+        case mapM (processAtomExpr params) l of
             Left err     -> Left err
-            Right []     -> Left "toDataQuery: or: empty"
-            Right (x:xs) -> Right $ foldl DataOr x xs
-    toDataQuery (AtomGroup l)     = toDataQuery l
-    toDataQuery (AtomPred k op v) =
+            Right []     -> Left "processAtomExpr: or: empty"
+            Right (x:xs) -> Right $ foldl orConstr x xs
+    processAtomExpr params (AtomGroup l)     = processAtomExpr params l
+    processAtomExpr (f,_,_) (AtomPred k op v) = f k op v
+
+    toDataQuery k op v =
         case k of
-            "filesize" -> undefined -- case op of -- DataSize
-            "security" -> undefined
-            "rating"   -> undefined
-            "date"     -> undefined
+            "size"     -> DataSize <$> parseNumOp op <*> parseSize v -- case op of -- DataSize
+            "filesize" -> DataSize <$> parseNumOp op <*> parseSize v -- case op of -- DataSize
+            "security" -> parseNum FieldSecurity op v
+            "rating"   -> parseNum FieldRating op v
+            "date"     -> Left ("date query not implemented")
             _          -> Left ("unknown data atom: " ++ k)
 
-    toTagQuery :: AtomExpr -> Either String TagQuery
-    toTagQuery (AtomAnd l)       = undefined
-    toTagQuery (AtomOr l)        = undefined
-    toTagQuery (AtomGroup l)     = undefined
-    toTagQuery (AtomPred k op v) = undefined
+    parseNum f op v =
+        DataNum f <$> parseNumOp op <*> parseInteger v
+
+    parseNumOp op =
+        case op of
+            "="  -> Right (:==)
+            "==" -> Right (:==)
+            "/=" -> Right (:/=)
+            "!=" -> Right (:/=)
+            "<"  -> Right (:<)
+            ">"  -> Right (:>)
+            "<=" -> Right (:<=)
+            ">=" -> Right (:>=)
+            _    -> Left ("unknown operator: " ++ show op)
+
+    parseSize v =
+        case span isDigit v of
+            ("", _)   -> Left ("invalid size: " ++ v)
+            (n , "")  -> Right $ read n
+            (n, "k")  -> Right $ read n * 1024
+            (n, "K")  -> Right $ read n * 1024
+            (n, "m")  -> Right $ read n * 1024 * 1024
+            (n, "M")  -> Right $ read n * 1024 * 1024
+            (n, "g")  -> Right $ read n * 1024 * 1024 * 1024
+            (n, "G")  -> Right $ read n * 1024 * 1024 * 1024
+            (n, qual) -> Left ("unknown size suffix : " ++ show qual ++ " after number: " ++ show n)
+    parseInteger v =
+        case readMaybe v of
+            Just n  -> Right n
+            Nothing -> Left ("invalid number: " ++ show v)
+
+    toTagQuery k op v = do
+        cat <- getGroup
+        case op of
+            "="  -> Right $ TagEqual $ Tag (Just cat) v
+            "==" -> Right $ TagEqual $ Tag (Just cat) v
+            "!=" -> Right $ TagNotEqual $ Tag (Just cat) v
+            "/=" -> Right $ TagNotEqual $ Tag (Just cat) v
+            "~=" -> Right $ TagLike cat v
+            _    -> Left ("unknown tag operator : " ++ show op ++ " after " ++ show k)
+      where
+        getGroup =
+            case k of
+                "person"   -> Right Person
+                "location" -> Right Location
+                "group"    -> Right Group
+                _          -> Left ("unknown tag category:" ++ k)
 
     isData = atomRec $ flip elem dataFields
     isTag  = atomRec $ flip elem tagFields
-    dataFields = ["filesize", "security", "rating", "date"]
+    dataFields = ["filesize", "size", "security", "rating", "date"]
     tagFields = ["person", "location", "group"]
     atomRec f (AtomAnd l)      = all (atomRec f) l
     atomRec f (AtomOr l)       = all (atomRec f) l

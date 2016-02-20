@@ -39,7 +39,7 @@ data CreateField = Field String FieldType
                  | Constraint CreateConstraint
 
 data QueryVal =
-      ValInt Int
+      ValInt Integer
     | ValString String
     | ValNull
 
@@ -47,10 +47,10 @@ data Query =
       (:==:) FieldName QueryVal
     | (:/=:) FieldName QueryVal
     | (:~~:) FieldName String
-    | (:>:) FieldName Int
-    | (:<:) FieldName Int
-    | (:>=:) FieldName Int
-    | (:<=:) FieldName Int
+    | (:>:) FieldName Integer
+    | (:<:) FieldName Integer
+    | (:>=:) FieldName Integer
+    | (:<=:) FieldName Integer
     | (:||:) Query Query
     | (:&&:) Query Query
 
@@ -77,7 +77,7 @@ sqlQuery = printQuery
     printQuery (f :>=: v)    = show f ++ " >= " ++ showNum v
     printQuery (f :~~: v)    = show f ++ " LIKE " ++ sqlShowString v
 
-    showNum :: Int -> String
+    showNum :: Integer -> String
     showNum = show
 
     sqlShowVal (ValInt i)    = showNum i
