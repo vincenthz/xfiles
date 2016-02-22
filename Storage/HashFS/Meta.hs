@@ -13,6 +13,7 @@ module Storage.HashFS.Meta
     , metaCreateTag
     , metaFindTag
     , metaRenameTag
+    , metaGetTags
     , metaAddData
     , metaUpdateData
     , DataProperty(..)
@@ -27,6 +28,8 @@ module Storage.HashFS.Meta
     , dateToElapsed
     -- * query
     , parseQuery
+    , tagToString
+    , tagFromString
     ) where
 
 import Control.Applicative
@@ -49,12 +52,12 @@ import Data.Char
 
 data MetaProviderSQL = forall conn . IConnection conn => MetaProviderSQL conn
 
-data MetaProvider =
+data MetaProvider h =
       MetaProviderBackendSQL MetaProviderSQL
 
-instance Show MetaProvider where
+instance Show (MetaProvider h) where
     show (MetaProviderBackendSQL _) = "MetaProviderBackendSQL {..}"
-instance Eq MetaProvider where -- not quite valid ..
+instance Eq (MetaProvider h) where -- not quite valid ..
     (==) (MetaProviderBackendSQL {}) (MetaProviderBackendSQL {}) = True
 
 data DataProperty =
@@ -70,23 +73,6 @@ dateFromElapsed (Elapsed (Seconds v)) = DateTime $ fromIntegral v
 
 dateToElapsed :: DateTime -> Elapsed
 dateToElapsed (DateTime t) = Elapsed (Seconds $ fromIntegral t)
-
-parseCategory :: Char -> Maybe Category
-parseCategory 'g' = Just Group
-parseCategory 'p' = Just Person
-parseCategory 'l' = Just Location
-parseCategory 'o' = Just Other
-parseCategory _   = Nothing
-
-tagFromString :: String -> Tag
-tagFromString s =
-    case s of
-        c:':':r ->
-            case parseCategory c of
-                Just cat -> Tag (Just cat) r
-                Nothing  -> Tag Nothing s
-        _ ->
-            Tag Nothing s
 
 -- Local provider create 3 tables
 --
@@ -109,57 +95,61 @@ data DataInfo = DataInfo
     }
     deriving (Show,Eq)
 
-
+data RenameStatus = RenameSourceNotExist | RenameDone | RenameMerged
+    deriving (Show,Eq)
 
 tagName :: Tag -> String
 tagName = tagToString
 
-metaConnect :: String -> String -> IO (Either String MetaProvider)
+metaConnect :: HashAlgorithm h => String -> String -> IO (Either String (MetaProvider h))
 metaConnect ty path =
     case ty of
         "sqlite3" -> Right <$> localMetaCreate path
         _         -> return $ Left ("invalid meta driver: " ++ show ty)
 
-metaCommit :: MetaProvider -> IO ()
+metaCommit :: HashAlgorithm h => MetaProvider h -> IO ()
 metaCommit (MetaProviderBackendSQL sql) = dbCommit sql
 
-metaDigestGetTags :: HashAlgorithm h => MetaProvider -> Digest h -> IO [Tag]
+metaDigestGetTags :: HashAlgorithm h => MetaProvider h -> Digest h -> IO [Tag]
 metaDigestGetTags (MetaProviderBackendSQL sql) = dbDigestGetTags sql
 
-metaDigestRemoveTags :: HashAlgorithm h => MetaProvider -> Digest h -> IO ()
+metaDigestRemoveTags :: HashAlgorithm h => MetaProvider h -> Digest h -> IO ()
 metaDigestRemoveTags (MetaProviderBackendSQL sql) = dbDigestRemoveTags sql
 
-metaTagGetDigests :: HashAlgorithm h => MetaProvider -> Tag -> IO [Digest h]
+metaTagGetDigests :: HashAlgorithm h => MetaProvider h -> Tag -> IO [Digest h]
 metaTagGetDigests (MetaProviderBackendSQL sql) = dbTagGetDigests sql
 
-metaFindDigestsNotTagged :: HashAlgorithm h => MetaProvider -> IO [Digest h]
+metaFindDigestsNotTagged :: HashAlgorithm h => MetaProvider h -> IO [Digest h]
 metaFindDigestsNotTagged (MetaProviderBackendSQL sql) = dbFindDigestsNotTagged sql
 
-metaFindDigestsWhich :: HashAlgorithm h => MetaProvider -> Maybe DataQuery -> Maybe TagQuery -> IO [Digest h]
+metaFindDigestsWhich :: HashAlgorithm h => MetaProvider h -> Maybe DataQuery -> Maybe TagQuery -> IO [Digest h]
 metaFindDigestsWhich (MetaProviderBackendSQL sql) = dbGetDigestsWhich sql
 
-metaCreateTag :: MetaProvider -> Tag -> IO (Index IndexTag)
+metaCreateTag :: MetaProvider h -> Tag -> IO (Index IndexTag)
 metaCreateTag (MetaProviderBackendSQL sql) = dbCreateTag sql
 
-metaUntag :: HashAlgorithm h => MetaProvider -> Digest h -> Tag -> IO ()
+metaUntag :: HashAlgorithm h => MetaProvider h -> Digest h -> Tag -> IO ()
 metaUntag (MetaProviderBackendSQL sql) = dbUntag sql
 
-metaTag :: HashAlgorithm h => MetaProvider -> Digest h -> Tag -> IO ()
+metaTag :: HashAlgorithm h => MetaProvider h -> Digest h -> Tag -> IO ()
 metaTag (MetaProviderBackendSQL sql) = dbAddTag sql
 
-metaFindTag :: MetaProvider -> Tag -> IO (Maybe (Index IndexTag))
+metaFindTag :: MetaProvider h -> Tag -> IO (Maybe (Index IndexTag))
 metaFindTag (MetaProviderBackendSQL sql) = dbFindTag sql
 
-metaRenameTag :: MetaProvider -> Tag -> Tag -> IO ()
+metaRenameTag :: MetaProvider h -> Tag -> Tag -> IO RenameStatus
 metaRenameTag (MetaProviderBackendSQL sql) = dbRenameTag sql
 
-metaAddData :: HashAlgorithm h => MetaProvider -> Digest h -> DataInfo -> IO ()
+metaGetTags :: MetaProvider h -> IO [Tag]
+metaGetTags (MetaProviderBackendSQL sql) = dbGetTags sql
+
+metaAddData :: HashAlgorithm h => MetaProvider h -> Digest h -> DataInfo -> IO ()
 metaAddData (MetaProviderBackendSQL sql) = dbAddData sql
 
-metaUpdateData :: HashAlgorithm h => MetaProvider -> Digest h -> [DataProperty] -> IO ()
+metaUpdateData :: HashAlgorithm h => MetaProvider h -> Digest h -> [DataProperty] -> IO ()
 metaUpdateData (MetaProviderBackendSQL sql) = dbUpdateData sql
 
-localMetaCreate :: FilePath -> IO MetaProvider
+localMetaCreate :: FilePath -> IO (MetaProvider h)
 localMetaCreate metaPath = do
     exists <- doesFileExist metaPath
     conn   <- connectSqlite3 metaPath
@@ -302,16 +292,36 @@ dbFindTag (MetaProviderSQL conn) tag = do
         [[uid]] -> return $ Just $ Index $ fromSql uid
         _       -> error ("dbFindTag: " ++ show tag ++ " unexpected sql output format " ++ show r)
 
-dbRenameTag :: MetaProviderSQL -> Tag -> Tag -> IO ()
+dbGetTags :: MetaProviderSQL -> IO [Tag]
+dbGetTags (MetaProviderSQL conn) =
+    map toTagName <$> quickQuery conn ("SELECT name FROM tag") []
+  where
+    toTagName [name] = tagFromString $ fromSql name
+    toTagName _      = error ("dbGetTags: unexpected sql output format")
+
+dbRenameTag :: MetaProviderSQL -> Tag -> Tag -> IO RenameStatus
 dbRenameTag prov@(MetaProviderSQL conn) oldTag newTag = do
     mti <- dbFindTag prov oldTag
     case mti of
-        Nothing -> return ()
+        Nothing -> return RenameSourceNotExist
         Just ti -> do
-            let q = "UPDATE tag SET name=" ++ sqlShowString (tagName newTag) ++ " WHERE id = " ++ show (getPrimaryKey ti)
-            stmt <- prepare conn q
-            _    <- execute stmt []
-            return ()
+            mexists <- dbFindTag prov newTag
+            -- if already exist then we want to update all the existing tagmap pointing to this tag to the new tag
+            case mexists of
+                Just exist -> do
+                    let q1 = "UPDATE tagmap SET tag_id=" ++ show (getPrimaryKey exist) ++ " WHERE id = " ++ show (getPrimaryKey ti)
+                        q2 = "DELETE tag WHERE id=" ++ show (getPrimaryKey ti)
+                    -- do something atomic..
+                    stmt <- prepare conn q1
+                    _    <- execute stmt []
+                    stmt <- prepare conn q2
+                    _    <- execute stmt []
+                    return RenameMerged
+                Nothing -> do
+                    let q = "UPDATE tag SET name=" ++ sqlShowString (tagName newTag) ++ " WHERE id = " ++ show (getPrimaryKey ti)
+                    stmt <- prepare conn q
+                    _    <- execute stmt []
+                    return RenameDone
 
 dbDigestGetTags :: MetaProviderSQL -> Digest h -> IO [Tag]
 dbDigestGetTags (MetaProviderSQL conn) digest = do

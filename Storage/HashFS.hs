@@ -29,6 +29,7 @@ module Storage.HashFS
     , importInto
     , importIntoAt
     -- * Generic operations
+    , getLocalPath
     , findDigest
     , findAllDigest
     , existsDigest
@@ -85,7 +86,7 @@ data Trunk h = TrunkGroup
 
 data Context h = Context
     { contextProviders  :: [Provider h]
-    , contextMetaviders :: [MetaProvider]
+    , contextMetaviders :: [MetaProvider h]
     , contextHash       :: h
     } deriving (Show,Eq)
 
@@ -115,6 +116,11 @@ data ProviderBackend h =
 
 data Remote = RemoteNative
     deriving (Show,Eq)
+
+onlyLocalProviders :: Providers h -> Providers h
+onlyLocalProviders = filter (isLocal . providerBackend)
+  where isLocal (ProviderLocal _) = True
+        isLocal _                 = False
 
 hashFileContext :: HashAlgorithm h => FilePath -> IO (Digest h)
 hashFileContext fp = hashFile hasherInitContext fp
@@ -166,7 +172,7 @@ withConfig f = do
                                   (ProviderLocal providerLocalConf)
             unknown -> error ("unknown database type: " ++ unknown)
 
-    toMeta :: HashAlgorithm h => h -> ConfigMeta -> IO MetaProvider
+    toMeta :: HashAlgorithm h => h -> ConfigMeta -> IO (MetaProvider h)
     toMeta _ meta = do
         path <- normalizeLocalPath (configMetaPath meta)
         either error id <$> metaConnect (configMetaType meta) path
@@ -193,6 +199,13 @@ findAllDigest providers digest = loop [] providers
         r <- existsIn (providerBackend x) digest
         loop (if r then x : acc else acc) xs
 
+getLocalPath :: HashAlgorithm h => Providers h -> Digest h -> IO (Maybe FilePath)
+getLocalPath providers d = do
+    mprov <- findDigest (onlyLocalProviders providers) d
+    case providerBackend <$> mprov of
+        Just (ProviderLocal conf) -> return $ Just $ getPath conf d
+        _                         -> return Nothing
+
 -- | Check if a data related to a digest exists in one of the providers
 existsDigest :: HashAlgorithm h => Providers h -> Digest h -> IO Bool
 existsDigest providers digest = maybe False (const True) <$> findDigest providers digest
@@ -202,7 +215,7 @@ existsDigest providers digest = maybe False (const True) <$> findDigest provider
 -- it also return whether or not the digest was already present
 -- in this provider.
 importInto :: HashAlgorithm h
-           => Maybe (MetaProvider, DataInfo, [Tag])
+           => Maybe (MetaProvider h, DataInfo, [Tag])
            -> Provider h
            -> Local.ImportType
            -> FilePath

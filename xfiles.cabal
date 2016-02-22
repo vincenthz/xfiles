@@ -36,6 +36,7 @@ Library
                    , Storage.HashFS.Protocol
                    , Storage.HashFS.Meta
                    , Storage.HashFS.Query
+                   , Storage.HashFS.Log
                    , Storage.HashFS.IO
                    , Storage.HashFS.Utils
                    , Storage.LockFile

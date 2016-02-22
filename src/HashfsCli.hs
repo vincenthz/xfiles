@@ -26,6 +26,8 @@ import           Storage.HashFS
 import           Storage.HashFS.Client
 import           Storage.HashFS.Protocol
 import           Storage.HashFS.IO
+import           Storage.HashFS.Meta
+import           Storage.HashFS.Query
 import           Storage.HashFS.Utils
 import           Storage.Utils
 
@@ -104,10 +106,46 @@ main = defaultMain $ do
 
     command "query" $ do
         description "query meta database"
+        queryArg <- argument "query" Right
+        asPath   <- flag (FlagShort 'p' <> FlagLong "show-path" <> FlagDescription "show path instead of digest")
+        asBase   <- flag (FlagShort 'b' <> FlagLong "base32" <> FlagDescription "show digest in base32 instead of hexadecimal")
+        action $ \toParam -> withConfig $ \context -> do
+            let query = toParam queryArg
+            --putStrLn $ show query
+            let showDigest d
+                    | toParam asPath    = do
+                        mp <- getLocalPath (contextProviders context) d
+                        case mp of
+                            Nothing -> putStrLn (show d ++ " not available locally")
+                            Just p  -> putStrLn p
+                    | toParam asBase    = undefined
+                    | otherwise         = putStrLn . show $ d
+            case parseQuery query of
+                Left err       -> putStrLn ("query error: " ++ err)
+                Right (dq, tq) -> do
+                    let metaviders = contextMetaviders context
+                    digests <- metaFindDigestsWhich (head metaviders) dq tq
+                    when (null digests) $ error "no digest found"
+                    mapM_ showDigest  digests
+    command "meta" $ do
+        description "query / change meta database"
+        command "rename" $ do
+            command "tag" $ do
+                t1 <- argument "old" (Right . tagFromString)
+                t2 <- argument "new" (Right . tagFromString)
+                action $ \toParam -> withConfig $ \context -> do
+                    let metaviders = contextMetaviders context
+                    r <- metaRenameTag (head metaviders) (toParam t1) (toParam t2)
+                    metaCommit (head metaviders)
+                    putStrLn $ "success: " ++ show r
+        command "list" $ do
+            command "tag" $ do
+                action $ \toParam -> withConfig $ \context -> do
+                    let metaviders = contextMetaviders context
+                    tags <- metaGetTags (head metaviders)
+                    mapM_ (putStrLn . tagToString) tags
 
 doImport disp metaTags repo args context = do
-    let provs = contextProviders context
-
     forM_ args $ \filePath -> do
         let ext = takeExtension filePath
         case repo of

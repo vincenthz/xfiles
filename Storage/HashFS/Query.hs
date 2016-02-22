@@ -21,12 +21,12 @@ import           Data.Sql
 import           Text.Read
 
 data TagQuery =
-      TagEqual Tag
+      TagEqual    Tag
     | TagNotEqual Tag
-    | TagCat Category
-    | TagLike Category String
-    | TagOr TagQuery TagQuery
-    | TagAnd TagQuery TagQuery
+    | TagCat      Category
+    | TagLike     Category String
+    | TagOr       TagQuery TagQuery
+    | TagAnd      TagQuery TagQuery
 
 data DataNumField = FieldRating | FieldSecurity
     deriving (Show,Eq)
@@ -44,8 +44,8 @@ data StrOperator = Contains | StartWith | EndsWith
     deriving (Show,Eq)
 
 data DateOperator =
-      Before Included DateTime
-    | After Included DateTime
+      Before  Included DateTime
+    | After   Included DateTime
     | Between Included DateTime Included DateTime
     deriving (Show,Eq)
 
@@ -57,12 +57,12 @@ data DateField = Itime | Mtime
     deriving (Show,Eq)
 
 data DataQuery =
-      DataNum DataNumField NumOperator Integer
-    | DataSize NumOperator Integer
+      DataNum      DataNumField NumOperator Integer
+    | DataSize     NumOperator Integer
     | DataFilename StrOperator String
-    | DataDate DateField DateOperator
-    | DataAnd DataQuery DataQuery
-    | DataOr DataQuery DataQuery
+    | DataDate     DateField DateOperator
+    | DataAnd      DataQuery DataQuery
+    | DataOr       DataQuery DataQuery
 
 dataSelectorQuery :: DataQuery -> String
 dataSelectorQuery = sqlQuery . transform
@@ -72,7 +72,7 @@ dataSelectorQuery = sqlQuery . transform
     security = sqlFQFN table "security"
     filename = sqlFQFN table "filename"
     mtime    = sqlFQFN table "mtime"
-    filesize = sqlFQFN table "filesize"
+    filesize = sqlFQFN table "size"
     itime    = sqlFQFN table "itime"
 
     transform (DataOr d1 d2)          = transform d1 :||: transform d2
@@ -148,8 +148,8 @@ parseQuery queryString =
             (dats, tags) = partitionEithers qs
          in case errs of
              [] -> Right
-                ( foldl (\acc q -> maybe (Just q) (undefined) acc) Nothing dats
-                , foldl (\acc q -> maybe (Just q) (undefined) acc) Nothing tags)
+                ( foldl (\acc q -> maybe (Just q) (Just . DataAnd q) acc) Nothing dats
+                , foldl (\acc q -> maybe (Just q) (Just . TagAnd q) acc) Nothing tags)
              e:_  -> Left e
 
     parseQueryInner :: AtomExpr
@@ -227,12 +227,13 @@ parseQuery queryString =
                 "person"   -> Right Person
                 "location" -> Right Location
                 "group"    -> Right Group
+                "tag"      -> Right Other
                 _          -> Left ("unknown tag category:" ++ k)
 
     isData = atomRec $ flip elem dataFields
     isTag  = atomRec $ flip elem tagFields
     dataFields = ["filesize", "size", "security", "rating", "date"]
-    tagFields = ["person", "location", "group"]
+    tagFields = ["person", "location", "group", "tag"]
     atomRec f (AtomAnd l)      = all (atomRec f) l
     atomRec f (AtomOr l)       = all (atomRec f) l
     atomRec f (AtomGroup g)    = atomRec f g
@@ -300,24 +301,24 @@ parseQuery queryString =
     eatString acc (x:xs)         = eatString (x : acc) xs
 
 data AtomExpr =
-      AtomAnd [AtomExpr]
-    | AtomOr  [AtomExpr]
+      AtomAnd   [AtomExpr]
+    | AtomOr    [AtomExpr]
     | AtomGroup AtomExpr
-    | AtomPred String String String
+    | AtomPred  String String String
     deriving (Show,Eq)
 
-data Atom = AtomInt String
-          | AtomOperator String
-          | AtomSymbol String
-          | AtomString String
-          | AtomError Char
+data Atom = AtomInt        String
+          | AtomOperator   String
+          | AtomSymbol     String
+          | AtomString     String
+          | AtomError      Char
           | AtomParseError String
         deriving (Show,Eq)
 
 eatRet :: Show elem => (elem -> Maybe a) -> Stream elem a
 eatRet predicate = Stream $ \el ->
     case el of
-        []           -> Left ("empty stream: eating")
+        []   -> Left ("empty stream: eating")
         x:xs ->
             case predicate x of
                 Just a  -> Right (a, xs)
@@ -326,10 +327,10 @@ eatRet predicate = Stream $ \el ->
 eat :: Show elem => (elem -> Bool) -> Stream elem ()
 eat predicate = Stream $ \el ->
     case el of
-        []           -> Left ("empty stream: eating")
+        [] -> Left ("empty stream: eating")
         x:xs
-            | predicate x    -> Right ((), xs)
-            | otherwise -> Left ("unexpected atom got: " ++ show x)
+            | predicate x -> Right ((), xs)
+            | otherwise   -> Left ("unexpected atom got: " ++ show x)
 
 newtype Stream elem a = Stream { runStream :: [elem] -> Either String (a, [elem]) }
 instance Functor (Stream elem) where

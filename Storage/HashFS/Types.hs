@@ -31,6 +31,22 @@ tagToString :: Tag -> String
 tagToString (Tag (Just cat) s) = printCategory cat : ':' : s
 tagToString (Tag Nothing    s) = s
 
+parseCategory :: Char -> Maybe Category
+parseCategory 'g' = Just Group
+parseCategory 'p' = Just Person
+parseCategory 'l' = Just Location
+parseCategory 'o' = Just Other
+parseCategory _   = Nothing
+
+tagFromString :: String -> Tag
+tagFromString s =
+    case s of
+        c:':':r ->
+            case parseCategory c of
+                Just cat -> Tag (Just cat) r
+                Nothing  -> Tag Nothing s
+        _ ->
+            Tag Nothing s
 
 
 -- | Configuration for HashFS
