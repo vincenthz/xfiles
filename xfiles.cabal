@@ -300,6 +300,7 @@ Test-Suite test-sql
   type:              exitcode-stdio-1.0
   hs-source-dirs:    tests
   Main-is:           Sql.hs
+  Other-modules:     HashfsState
   default-language:  Haskell2010
   Build-Depends:     base >= 3 && < 5
                    , tasty
@@ -307,6 +308,7 @@ Test-Suite test-sql
                    , tasty-quickcheck
                    , QuickCheck
                    , cryptonite
+                   , containers
                    , bytestring
                    , hourglass
                    , xfiles
