@@ -165,9 +165,13 @@ main = defaultMain $ do
                     putStrLn $ "success: " ++ show r
         command "list" $ do
             command "tag" $ do
+                g <- flag (FlagShort 'g' <> FlagLong "group")
                 action $ \toParam -> withConfig $ \context -> do
                     let metaviders = contextMetaviders context
-                    tags <- metaGetTags (head metaviders)
+                    let q = case toParam g of
+                                True -> Just $ StructExpr $ TagCat Group
+                                False -> Nothing
+                    tags <- metaGetTags (head metaviders) q
                     mapM_ (putStrLn . tagToString) tags
 
 doImport disp metaTags repo args context = do

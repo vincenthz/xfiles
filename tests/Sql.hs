@@ -86,7 +86,7 @@ sqlQueriesWork (SqlFile f) st = do
         listCompare ("not tagged missing") expected notTagged
         return ()
 
-    -- queries
+    -- multi tag queries
     forM_ (stateGetMultiTags st) $ \(tgs, (l, expected)) ->
         if l <= 1
             then return ()
@@ -100,13 +100,64 @@ sqlQueriesWork (SqlFile f) st = do
                     Left err -> error ("query " ++ show qStr ++ " invalid: " ++ show err)
                     Right dq -> do
                         got <- metaFindDigestsWhich conn dq
-                        putStrLn $ show dq
+                        -- putStrLn $ show dq
                         listCompare ("multi tags " ++ show tgs ++ " missing: ") expected2 got
                         return ()
+
+    -- renaming tags
+    -- * renaming tag to something that doesn't exist
+    -- * renaming tag to something that exist
+    () <- do
+        let s1 = head $ stateTags st
+            s2 = Tag (Just Group) "bliblabloo"
+        let expected = stateGetDigestTaggedWith st s1
+
+        _ <- metaRenameTag conn s1 s2
+        metaCommit conn
+
+        found <- metaTagGetDigests conn s2
+        listCompare ("after renaming to something non existing") expected found
+
+        _ <- metaRenameTag conn s2 s1
+        metaCommit conn
+
+        found2 <- metaTagGetDigests conn s1
+        listCompare ("after renaming back") expected found2
+
+    when (length (stateTags st) >= 2) $ do
+        let s1 = head $ stateTags st
+            s2 = head $ drop 1 $ stateTags st
+        let expected1  = stateGetDigestTaggedWith st s1
+            expected2a = stateGetDigestTaggedWith st s2
+            iexp       = intersect expected1 expected2a
+            expected2  = expected2a \\ iexp
+
+        let expected = sort (expected1 ++ expected2)
+
+        _ <- metaRenameTag conn s1 s2
+        metaCommit conn
+
+        found <- metaTagGetDigests conn s2
+        listCompare ("after renaming " ++ show s1 ++ " #" ++ show (length expected1) ++ " to existing " ++ show s2 ++ " #" ++ show (length expected2) ++ " intersect=#" ++ show (length iexp))
+                expected found
+
+        -- can't rename back without being careful ...
+
     return ()
   where
     listCompare err expected found
-        | sort found /= sort expected = error ("sql: " ++ f ++ "\n" ++ err ++ "\ngot     : " ++ show found ++ "\nexpected: " ++ show expected)
+        | sort found == sort expected = return ()
+        | otherwise                   =
+            let matching = intersect found expected
+                got_exp  = found \\ matching
+                exp_got  = expected \\ matching
+             in error $ unlines $
+                [ "sql: " ++ f
+                , err
+                , "got#: " ++ show (length found) ++ " found#: " ++ show (length expected) ++ " extra#: " ++ show (length got_exp) ++ " missing#: " ++ show (length exp_got)
+                , "extra   : " ++ show got_exp
+                , "missing : " ++ show exp_got
+                ]
         | otherwise = return ()
 
     tagsToQuery (Tag (Just Person) x)   = "person == " ++ show x

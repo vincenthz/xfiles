@@ -140,7 +140,7 @@ metaFindTag (MetaProviderBackendSQL sql) = dbFindTag sql
 metaRenameTag :: MetaProvider h -> Tag -> Tag -> IO RenameStatus
 metaRenameTag (MetaProviderBackendSQL sql) = dbRenameTag sql
 
-metaGetTags :: MetaProvider h -> IO [Tag]
+metaGetTags :: MetaProvider h -> Maybe (QueryStruct TagQuery) -> IO [Tag]
 metaGetTags (MetaProviderBackendSQL sql) = dbGetTags sql
 
 metaAddData :: HashAlgorithm h => MetaProvider h -> Digest h -> DataInfo -> IO ()
@@ -292,9 +292,11 @@ dbFindTag (MetaProviderSQL conn) tag = do
         [[uid]] -> return $ Just $ Index $ fromSql uid
         _       -> error ("dbFindTag: " ++ show tag ++ " unexpected sql output format " ++ show r)
 
-dbGetTags :: MetaProviderSQL -> IO [Tag]
-dbGetTags (MetaProviderSQL conn) =
-    map toTagName <$> quickQuery conn ("SELECT name FROM tag") []
+dbGetTags :: MetaProviderSQL -> Maybe (QueryStruct TagQuery) -> IO [Tag]
+dbGetTags (MetaProviderSQL conn) mq =
+    case mq of
+        Nothing -> map toTagName <$> quickQuery conn ("SELECT name FROM tag") []
+        Just q  -> map toTagName <$> quickQuery conn ("SELECT name FROM tag WHERE " ++ sqlQuery (tagSelectorQuery q)) []
   where
     toTagName [name] = tagFromString $ fromSql name
     toTagName _      = error ("dbGetTags: unexpected sql output format")
@@ -309,8 +311,8 @@ dbRenameTag prov@(MetaProviderSQL conn) oldTag newTag = do
             -- if already exist then we want to update all the existing tagmap pointing to this tag to the new tag
             case mexists of
                 Just exist -> do
-                    let q1 = "UPDATE tagmap SET tag_id=" ++ show (getPrimaryKey exist) ++ " WHERE id = " ++ show (getPrimaryKey ti)
-                        q2 = "DELETE tag WHERE id=" ++ show (getPrimaryKey ti)
+                    let q1 = "UPDATE tagmap SET tag_id=" ++ show (getPrimaryKey exist) ++ " WHERE tag_id = " ++ show (getPrimaryKey ti)
+                        q2 = "DELETE FROM tag WHERE id=" ++ show (getPrimaryKey ti)
                     -- do something atomic..
                     stmt  <- prepare conn q1
                     _     <- execute stmt []
@@ -393,16 +395,14 @@ dbGetDigestsWhich (MetaProviderSQL conn) dataQuery = do
     toRet [x] = digestFromDb $ fromSql x
     toRet _   = error "dbDigetGetTags: internal error: query returned invalid number of items"
 
-    structDataToString x =
-        case x of
-            StructAnd e1 e2 ->
-                structDataToString e1 :&&: structDataToString e2
-            StructOr e1 e2  ->
-                structDataToString e1 :||: structDataToString e2
-            StructExpr e    ->
-                case dataSelectorQuery e of
-                    Left tq    -> toNested tq
-                    Right sqlQ -> sqlQ
+    structDataToString (StructAnd e1 e2) =
+        structDataToString e1 :&&: structDataToString e2
+    structDataToString (StructOr e1 e2) =
+        structDataToString e1 :||: structDataToString e2
+    structDataToString (StructExpr e) =
+        case dataSelectorQuery e of
+            Left tq    -> toNested tq
+            Right sqlQ -> sqlQ
     toNested x =
         case x of
             StructAnd e1 e2 -> toNested e1 :&&: toNested e2
