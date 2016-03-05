@@ -4,6 +4,7 @@
 module Storage.HashFS.Meta
     ( MetaProvider
     , metaConnect
+    , metaDisconnect
     , metaCommit
     , metaDigestGetTags
     , metaDigestRemoveTags
@@ -106,6 +107,9 @@ metaConnect ty path =
     case ty of
         "sqlite3" -> Right <$> localMetaCreate path
         _         -> return $ Left ("invalid meta driver: " ++ show ty)
+
+metaDisconnect :: MetaProvider h -> IO ()
+metaDisconnect (MetaProviderBackendSQL (MetaProviderSQL sql)) = disconnect sql
 
 metaCommit :: HashAlgorithm h => MetaProvider h -> IO ()
 metaCommit (MetaProviderBackendSQL sql) = dbCommit sql

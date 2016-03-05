@@ -128,9 +128,9 @@ sqlQueriesWork (SqlFile f) st = do
         let s1 = head $ stateTags st
             s2 = head $ drop 1 $ stateTags st
         let expected1  = stateGetDigestTaggedWith st s1
-            expected2a = stateGetDigestTaggedWith st s2
+            expected2a = stateGetDigestTaggedWith st s2 -- watch out for duplicates with set of s1
             iexp       = intersect expected1 expected2a
-            expected2  = expected2a \\ iexp
+            expected2  = expected2a \\ iexp -- without duplicates
 
         let expected = sort (expected1 ++ expected2)
 
@@ -143,6 +143,8 @@ sqlQueriesWork (SqlFile f) st = do
 
         -- can't rename back without being careful ...
 
+    -- last stuff to do, to cleanup the FS
+    metaDisconnect conn >> removeFile f
     return ()
   where
     listCompare err expected found
