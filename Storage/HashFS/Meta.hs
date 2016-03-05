@@ -40,7 +40,7 @@ import Crypto.Hash
 import Database.HDBC
 import Database.HDBC.Sqlite3
 import Data.Word
-import Data.Sql
+import Data.Sql hiding (Query)
 import Data.Either (partitionEithers)
 import Data.List (intercalate)
 import System.Directory
@@ -122,7 +122,7 @@ metaTagGetDigests (MetaProviderBackendSQL sql) = dbTagGetDigests sql
 metaFindDigestsNotTagged :: HashAlgorithm h => MetaProvider h -> IO [Digest h]
 metaFindDigestsNotTagged (MetaProviderBackendSQL sql) = dbFindDigestsNotTagged sql
 
-metaFindDigestsWhich :: HashAlgorithm h => MetaProvider h -> Maybe DataQuery -> Maybe TagQuery -> IO [Digest h]
+metaFindDigestsWhich :: HashAlgorithm h => MetaProvider h -> QueryStruct DataQuery -> IO [Digest h]
 metaFindDigestsWhich (MetaProviderBackendSQL sql) = dbGetDigestsWhich sql
 
 metaCreateTag :: MetaProvider h -> Tag -> IO (Index IndexTag)
@@ -312,10 +312,10 @@ dbRenameTag prov@(MetaProviderSQL conn) oldTag newTag = do
                     let q1 = "UPDATE tagmap SET tag_id=" ++ show (getPrimaryKey exist) ++ " WHERE id = " ++ show (getPrimaryKey ti)
                         q2 = "DELETE tag WHERE id=" ++ show (getPrimaryKey ti)
                     -- do something atomic..
-                    stmt <- prepare conn q1
-                    _    <- execute stmt []
-                    stmt <- prepare conn q2
-                    _    <- execute stmt []
+                    stmt  <- prepare conn q1
+                    _     <- execute stmt []
+                    stmt2 <- prepare conn q2
+                    _     <- execute stmt2 []
                     return RenameMerged
                 Nothing -> do
                     let q = "UPDATE tag SET name=" ++ sqlShowString (tagName newTag) ++ " WHERE id = " ++ show (getPrimaryKey ti)
@@ -323,6 +323,7 @@ dbRenameTag prov@(MetaProviderSQL conn) oldTag newTag = do
                     _    <- execute stmt []
                     return RenameDone
 
+-- Return all the tags, tagging a specific digest
 dbDigestGetTags :: MetaProviderSQL -> Digest h -> IO [Tag]
 dbDigestGetTags (MetaProviderSQL conn) digest = do
     let query = mconcat
@@ -338,6 +339,7 @@ dbDigestGetTags (MetaProviderSQL conn) digest = do
     toRet [x] = tagFromString $ fromSql x
     toRet _   = error "dbDigetGetTags: internal error: query returned invalid number of items"
 
+-- Return the digests that are tagged with a specific tag
 dbTagGetDigests :: HashAlgorithm h => MetaProviderSQL -> Tag -> IO [Digest h]
 dbTagGetDigests (MetaProviderSQL conn) tag = do
     let query = mconcat
@@ -378,28 +380,44 @@ dbFindDigestsNotTagged (MetaProviderSQL conn) = do
     toRet [x] = digestFromDb $ fromSql x
     toRet _   = error "dbDigetGetTags: internal error: query returned invalid number of items"
 
-dbGetDigestsWhich :: HashAlgorithm h => MetaProviderSQL -> Maybe DataQuery -> Maybe TagQuery -> IO [Digest h]
-dbGetDigestsWhich (MetaProviderSQL _)    Nothing   Nothing  = error "dbGetDigestsWhich: no query specified"
-dbGetDigestsWhich (MetaProviderSQL conn) dataQuery tagQuery = do
+dbGetDigestsWhich :: HashAlgorithm h => MetaProviderSQL -> Query -> IO [Digest h]
+dbGetDigestsWhich (MetaProviderSQL conn) dataQuery = do
     let query = mconcat
             [ "SELECT data.hash FROM data where "
-            , maybeAnd (\tq -> "data.id IN (SELECT tagmap.data_id FROM tagmap WHERE tagmap.tag_id = ("
-                            ++ tagSelectorQuery tq ++ "))") tagQuery
-                       (\dq -> dataSelectorQuery dq) dataQuery
+            , sqlQuery $ structDataToString dataQuery
             ]
+    --putStrLn $ show query
     map toRet <$> quickQuery conn query []
   where
-    maybeAnd :: (x -> String) -> Maybe x
-             -> (y -> String) -> Maybe y
-             -> String
-    maybeAnd _  Nothing  _  Nothing  = error "internal error : no query specified"
-    maybeAnd _  Nothing  fy (Just y) = fy y
-    maybeAnd fx (Just x) _  Nothing  = fx x
-    maybeAnd fx (Just x) fy (Just y) = "(" ++ fx x ++ ") AND (" ++ fy y ++ ")"
-
     toRet :: HashAlgorithm h => [SqlValue] -> Digest h
     toRet [x] = digestFromDb $ fromSql x
     toRet _   = error "dbDigetGetTags: internal error: query returned invalid number of items"
+
+    structDataToString x =
+        case x of
+            StructAnd e1 e2 ->
+                structDataToString e1 :&&: structDataToString e2
+            StructOr e1 e2  ->
+                structDataToString e1 :||: structDataToString e2
+            StructExpr e    ->
+                case dataSelectorQuery e of
+                    Left tq    -> toNested tq
+                    Right sqlQ -> sqlQ
+    toNested x =
+        case x of
+            StructAnd e1 e2 -> toNested e1 :&&: toNested e2
+            StructOr e1 e2  -> toNested e1 :||: toNested e2
+            StructExpr _    ->
+                let w = tmTagId `EqQuery` (Select [tId] tTag $ tagSelectorQuery x)
+                 in dId `InQuery` Select [tmDataId] tTagmap w
+
+    tData   = TableName "data"
+    tTag    = TableName "tag"
+    tTagmap = TableName "tagmap"
+    dId     = sqlFQFN tData "id"
+    tId     = sqlFQFN tTag  "id"
+    tmDataId = sqlFQFN tTagmap "data_id"
+    tmTagId  = sqlFQFN tTagmap "tag_id"
 
 -- | execute a statement (that should be insert)
 -- and return the last inserted rowid (primary key)

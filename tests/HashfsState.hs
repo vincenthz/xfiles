@@ -13,6 +13,7 @@ import           Storage.HashFS
 import           System.Directory
 import           Crypto.Hash
 import           Data.List
+import           Data.Function (on)
 
 import           Data.Hourglass
 import           Data.Word
@@ -34,7 +35,7 @@ instance HashAlgorithm h => Arbitrary (State h) where
                     di     <- arbitrary
                     dgTags <- nub <$> (choose (0,4) >>= flip replicateM (elements tags))
                     return (dg, (di, dgTags))
-                    
+
         return $ State digests tags (M.fromList ass)
 
 newState :: HashAlgorithm h => h -> Gen (State h)
@@ -42,7 +43,7 @@ newState _ = arbitrary
 
 instance Arbitrary Tag where
     arbitrary =
-        Tag <$> elements [Nothing, Just Other, Just Person, Just Location, Just Group]
+        Tag <$> elements [Just Other, Just Person, Just Location, Just Group]
             <*> elements arbitraryTag
 
 forEachDigestsAndData :: HashAlgorithm h => State h -> ((Digest h, (DataInfo, [Tag])) -> IO a) -> IO ()
@@ -57,6 +58,22 @@ forEachDigests st f = forM_ (stateContents st) f
 stateGetUntagged :: State h -> [Digest h]
 stateGetUntagged st =
     map fst $ filter (\(_,(_,ts)) -> null ts) $ M.toList $ stateAssociates st
+
+stateGetMultiTags :: State h -> [([Tag], (Int, [Digest h]))]
+stateGetMultiTags st =
+      sortBy (compare `on` fst . snd)
+    $ map (\x -> (snd $ head x, (length x, map fst x))) -- head is safe here, as group doesn't return empty list
+    $ groupBy ((==) `on` snd)
+    $ sortBy (compare `on` snd)
+    $ map (\(d, (_,ts)) -> (d,ts))
+    $ filter (\(_,(_,ts)) -> length ts > 1)
+    $ M.toList $ stateAssociates st
+
+stateFindMultiTags :: State h -> [Tag] -> [Digest h]
+stateFindMultiTags st tags =
+      map fst
+    $ filter (\(_,(_,ts)) -> intersect tags ts == tags)
+    $ M.toList $ stateAssociates st
 
 stateGetTagOf :: State h -> Digest h -> [Tag]
 stateGetTagOf st dg =
@@ -81,14 +98,6 @@ arbitraryTag =
 arbitraryFilesize :: [Word64]
 arbitraryFilesize = [1, 1248908, 4129124, 2901, 24180421490, 12389, 4125]
 
-arbitraryDataInfo :: [DataInfo]
-arbitraryDataInfo =
-    [ DataInfo sz dt Nothing filename
-    | filename <- [Nothing, Just "abc.jpg", Just "xoxo"]
-    , dt       <- map (Just . toElapsed) [1, 2901, 8249414]
-    , sz       <- arbitraryFilesize
-    ]
-
 instance Arbitrary DataInfo where
     arbitrary = do
         filename <- elements [Nothing, Just "abc.jpg", Just "xoxo"]
@@ -108,7 +117,7 @@ data QueryType = QueryFilesize | QueryRating
 
 instance Arbitrary Query where
     arbitrary = do
-        ty <- elements [minBound..] 
+        ty <- elements [minBound..]
         case ty of
             QueryFilesize -> do
                 (str, fct) <- genNumQuery $ fromIntegral (maximum arbitraryFilesize + 1)
@@ -122,8 +131,8 @@ instance Arbitrary Query where
                                , queryFilter = \dt _ -> fct . fromIntegral . dataSize $ dt
                                }
 
--- :: [Query] -> 
-            
+-- :: [Query] ->
+
 genNumQuery :: Integer -> Gen (String, Integer -> Bool)
 genNumQuery maxN = do
     op       <- elements [GT,EQ,LT]

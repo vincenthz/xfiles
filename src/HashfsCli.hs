@@ -10,10 +10,11 @@ import           Control.Monad
 import           Control.Concurrent
 import           Text.Read
 import           Data.Maybe
-import           Data.List (find)
+import           Data.List (find, intercalate)
 import           Data.Monoid
 import qualified Crypto.PubKey.Ed25519 as Ed25519
 import           Crypto.Error
+import           Crypto.Hash (Digest)
 --import qualified Tools.Config as Config
 
 import qualified Data.ByteArray.Encoding as B
@@ -104,29 +105,53 @@ main = defaultMain $ do
                         ++ map (Tag (Just Other)) (toParam tagD)
             withConfig (doImport disp metaTags repo args)
 
-    command "query" $ do
-        description "query meta database"
-        queryArg <- argument "query" Right
+    command "untagged" $ do
+        description "query meta database about untagged digest"
         asPath   <- flag (FlagShort 'p' <> FlagLong "show-path" <> FlagDescription "show path instead of digest")
         asBase   <- flag (FlagShort 'b' <> FlagLong "base32" <> FlagDescription "show digest in base32 instead of hexadecimal")
         action $ \toParam -> withConfig $ \context -> do
-            let query = toParam queryArg
-            --putStrLn $ show query
             let showDigest d
                     | toParam asPath    = do
                         mp <- getLocalPath (contextProviders context) d
                         case mp of
                             Nothing -> putStrLn (show d ++ " not available locally")
                             Just p  -> putStrLn p
-                    | toParam asBase    = undefined
-                    | otherwise         = putStrLn . show $ d
+                    | otherwise         = do
+                        let dg = if toParam asBase then showBase32 d else show d
+                        putStrLn dg
+            let metaviders = contextMetaviders context
+            digests <- metaFindDigestsNotTagged (head metaviders)
+            when (null digests) $ error "no untagged digest found"
+            mapM_ showDigest digests
+
+    command "query" $ do
+        description "query meta database"
+        queryArg <- argument "query" Right
+        showTags <- flag (FlagShort 't' <> FlagLong "show-tags" <> FlagDescription "show all the tags for each digest matching the query")
+        asPath   <- flag (FlagShort 'p' <> FlagLong "show-path" <> FlagDescription "show path instead of digest")
+        asBase   <- flag (FlagShort 'b' <> FlagLong "base32" <> FlagDescription "show digest in base32 instead of hexadecimal")
+        action $ \toParam -> withConfig $ \context -> do
+            let query = toParam queryArg
+            --putStrLn $ show query
+            let showDigest withTags d
+                    | toParam asPath    = do
+                        mp <- getLocalPath (contextProviders context) d
+                        case mp of
+                            Nothing -> putStrLn (show d ++ " not available locally")
+                            Just p  -> putStrLn p
+                    | otherwise         = do
+                        t <- if withTags
+                                then intercalate " " . map show <$> metaDigestGetTags (head $ contextMetaviders context) d
+                                else return ""
+                        let dg = if toParam asBase then showBase32 d else show d
+                        putStrLn $ dg ++ " " ++ t
             case parseQuery query of
-                Left err       -> putStrLn ("query error: " ++ err)
-                Right (dq, tq) -> do
+                Left err  -> putStrLn ("query error: " ++ err)
+                Right dq  -> do
                     let metaviders = contextMetaviders context
-                    digests <- metaFindDigestsWhich (head metaviders) dq tq
+                    digests <- metaFindDigestsWhich (head metaviders) dq
                     when (null digests) $ error "no digest found"
-                    mapM_ showDigest  digests
+                    mapM_ (showDigest (toParam showTags)) digests
     command "meta" $ do
         description "query / change meta database"
         command "rename" $ do
@@ -159,6 +184,9 @@ doImport disp metaTags repo args context = do
 
                 (dup, d) <- importInto (fmap (\(a,b) -> (a,b,metaTags)) di) prov ImportCopy filePath
                 display disp [Fg Green, T (if dup then "" else "✓ "), NA, T $ show d, T " ", T filePath, T "\n"]
+
+showBase32 :: Digest h -> String
+showBase32 = show
 
 --grabDataInfo :: [MetaVider] -> FilePath -> IO (Maybe (MetaVider, DataInfo))
 grabDataInfo []    _  = return Nothing

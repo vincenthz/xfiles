@@ -1,14 +1,17 @@
 module Storage.HashFS.Query
     ( TagQuery(..)
     , DataQuery(..)
+    , Query
     , DateOperator(..)
     , DateField(..)
     , DataNumField(..)
     , NumOperator(..)
     , StrOperator(..)
+    , QueryStruct(..)
     -- * parsing from string
     , dataSelectorQuery
     , tagSelectorQuery
+    , tagSelectorQueryString
     , parseQuery
     ) where
 
@@ -17,16 +20,41 @@ import           Control.Arrow (first)
 import           Storage.HashFS.Types
 import           Data.Either (partitionEithers)
 import           Data.Char
-import           Data.Sql
+import           Data.Sql hiding (Query)
+import qualified Data.Sql as Sql
 import           Text.Read
+
+data QueryStruct expr =
+      StructAnd (QueryStruct expr) (QueryStruct expr)
+    | StructOr (QueryStruct expr) (QueryStruct expr)
+    | StructExpr expr
+    deriving (Show,Eq)
+
+-- try to "lift" the Left as far as possible, otherwise apply the a -> b transformation to turn into a Right
+queryEitherRight :: (QueryStruct a -> QueryStruct b)
+                 -> QueryStruct (Either a b)
+                 -> Either (QueryStruct a) (QueryStruct b)
+queryEitherRight f (StructAnd e1 e2) =
+    case (queryEitherRight f e1, queryEitherRight f e2) of
+        (Left x1, Left x2)   -> Left (StructAnd x1 x2)
+        (Right x1, Right x2) -> Right (StructAnd x1 x2)
+        (Left x1, Right x2)  -> Right (StructAnd (f x1) x2)
+        (Right x1, Left x2)  -> Right (StructAnd x1 (f x2))
+queryEitherRight f (StructOr e1 e2) =
+    case (queryEitherRight f e1, queryEitherRight f e2) of
+        (Left x1, Left x2)   -> Left (StructOr x1 x2)
+        (Right x1, Right x2) -> Right (StructOr x1 x2)
+        (Left x1, Right x2)  -> Right (StructOr (f x1) x2)
+        (Right x1, Left x2)  -> Right (StructOr x1 (f x2))
+queryEitherRight _ (StructExpr (Left a))  = Left (StructExpr a)
+queryEitherRight _ (StructExpr (Right b)) = Right (StructExpr b)
 
 data TagQuery =
       TagEqual    Tag
     | TagNotEqual Tag
     | TagCat      Category
     | TagLike     Category String
-    | TagOr       TagQuery TagQuery
-    | TagAnd      TagQuery TagQuery
+    deriving (Show,Eq)
 
 data DataNumField = FieldRating | FieldSecurity
     deriving (Show,Eq)
@@ -61,11 +89,13 @@ data DataQuery =
     | DataSize     NumOperator Integer
     | DataFilename StrOperator String
     | DataDate     DateField DateOperator
-    | DataAnd      DataQuery DataQuery
-    | DataOr       DataQuery DataQuery
+    | DataTag      (QueryStruct TagQuery)
+    deriving (Show,Eq)
 
-dataSelectorQuery :: DataQuery -> String
-dataSelectorQuery = sqlQuery . transform
+type Query = QueryStruct DataQuery
+
+dataSelectorQuery :: DataQuery -> Either (QueryStruct TagQuery) Sql.WhereQuery
+dataSelectorQuery = transform
   where
     table    = TableName "data"
     rating   = sqlFQFN table "rating"
@@ -75,15 +105,14 @@ dataSelectorQuery = sqlQuery . transform
     filesize = sqlFQFN table "size"
     itime    = sqlFQFN table "itime"
 
-    transform (DataOr d1 d2)          = transform d1 :||: transform d2
-    transform (DataAnd d1 d2)         = transform d1 :&&: transform d2
+    transform (DataTag tq) = Left tq
     transform (DataNum fieldTy numOp v) =
         let field = case fieldTy of
                     FieldRating   -> rating
                     FieldSecurity -> security
          in numTransform field numOp v
     transform (DataSize numOp v) = numTransform filesize numOp v
-    transform (DataFilename strOp s) =
+    transform (DataFilename strOp s) = Right $
         case strOp of
             Contains  -> filename :~~: ("%" ++ s ++ "%")
             StartWith -> filename :~~: (s ++ "%")
@@ -92,7 +121,7 @@ dataSelectorQuery = sqlQuery . transform
         let f = case dateField of
                     Mtime -> mtime
                     Itime -> itime
-         in case dateOp of
+         in Right $ case dateOp of
                 Before NotIncluded d     -> f :<: elapsedToInt d
                 Before Included d        -> f :<=: elapsedToInt d
                 After NotIncluded d      -> f :>: elapsedToInt d
@@ -101,7 +130,7 @@ dataSelectorQuery = sqlQuery . transform
                          if ic1 == Included then (f :>=: elapsedToInt d1) else (f :>: elapsedToInt d1)
                     :&&: if ic2 == Included then (f :<=: elapsedToInt d2) else (f :<: elapsedToInt d2)
 
-    numTransform field numOp v =
+    numTransform field numOp v = Right $
         case numOp of
             (:==) -> field :==: (ValInt v)
             (:/=) -> field :/=: (ValInt v)
@@ -113,64 +142,62 @@ dataSelectorQuery = sqlQuery . transform
     elapsedToInt :: DateTime -> Integer
     elapsedToInt (DateTime s) = fromIntegral s
 
-tagSelectorQuery :: TagQuery -> String
-tagSelectorQuery query =
-    "SELECT tag.id FROM tag WHERE " ++ sqlQuery (transform query)
+tagSelectorQuery :: QueryStruct TagQuery -> Sql.WhereQuery
+tagSelectorQuery tq = transformS tq
   where
-    n = sqlFN "name"
+    n = sqlFN "tag.name"
+    transformS (StructAnd q1 q2) = transformS q1 :&&: transformS q2
+    transformS (StructOr q1 q2)  = transformS q1 :||: transformS q2
+    transformS (StructExpr e)    = transformQ e
+    transformQ (TagEqual t)      = n :==: ValString (tagToString t)
+    transformQ (TagNotEqual t)   = n :/=: ValString (tagToString t)
+    transformQ (TagLike c t)     = n :~~: (printCategory c : ":" ++ t)
+    transformQ (TagCat c)        = n :~~: (printCategory c : ":%")
 
-    transform (TagAnd q1 q2)  = transform q1 :&&: transform q2
-    transform (TagOr q1 q2)   = transform q1 :||: transform q2
-    transform (TagEqual t)    = n :==: ValString (tagToString t)
-    transform (TagNotEqual t) = n :/=: ValString (tagToString t)
-    transform (TagLike c t)   = n :~~: (printCategory c : ":" ++ t)
-    transform (TagCat c)      = n :~~: (printCategory c : ":%")
+tagSelectorQueryString :: QueryStruct TagQuery -> String
+tagSelectorQueryString =
+    ("SELECT tag.id FROM tag WHERE " ++) . sqlQuery . tagSelectorQuery
 
--- | Parse a string representing a query for this meta
+-- | Parse a string representing a query for this meta system
 --
 -- Example:
 -- * tag = abc
 -- * tag = abc && person = Alice && person != Bob
 -- * group ~= "Holidays*" && (person = Alice || person = Bob) && filesize > 10000 && (security = 2 || rating > 3)
 -- * tag = {abc,def,xyz}
+-- * person = Alice || (person == Bob && filesize > 10) && group = "no place like home"
 --
-parseQuery :: String -> Either String (Maybe DataQuery, Maybe TagQuery)
+parseQuery :: String -> Either String Query
 parseQuery queryString =
     case runStream parseAtoms $ atomize queryString of
-        Right (AtomAnd l, []) -> parseQueryAnd l
-        Right (a, [])         -> parseQueryAnd [a]
+        Right (a, [])         -> do
+            r <- parseTagOrData a
+            case queryEitherRight (StructExpr . DataTag) r of
+                Left x  -> Right $ StructExpr $ DataTag x
+                Right y -> Right y
         Right (_, _:_)        -> Left "unparsed content"
         Left err              -> Left ("parse error: " ++ err)
   where
-    parseQueryAnd :: [AtomExpr] -> Either String (Maybe DataQuery, Maybe TagQuery)
-    parseQueryAnd es =
-        let (errs, qs)   = partitionEithers $ map parseQueryInner es
-            (dats, tags) = partitionEithers qs
-         in case errs of
-             [] -> Right
-                ( foldl (\acc q -> maybe (Just q) (Just . DataAnd q) acc) Nothing dats
-                , foldl (\acc q -> maybe (Just q) (Just . TagAnd q) acc) Nothing tags)
-             e:_  -> Left e
+    parseTagOrData :: AtomExpr -> Either String (QueryStruct (Either TagQuery DataQuery))
+    parseTagOrData (AtomAnd l)       = do
+        r <- mapM parseTagOrData l
+        case r of
+            []  -> Left "parseTagOrData: empty result in And"
+            [x] -> Right x
+            _:_ -> Right $ foldl1 StructAnd r
 
-    parseQueryInner :: AtomExpr
-                    -> Either String (Either DataQuery TagQuery)
-    parseQueryInner e
-        | isData e  = either Left (Right . Left) $ processAtomExpr (toDataQuery,DataAnd,DataOr) e
-        | isTag e   = either Left (Right . Right) $ processAtomExpr (toTagQuery,TagAnd,TagOr) e
-        | otherwise = Left ("atom not a valid data or tag query: " ++ show e)
-
-    processAtomExpr params@(_,andConstr,_) (AtomAnd l) =
-        case mapM (processAtomExpr params) l of
-            Left err     -> Left err
-            Right []     -> Left "processAtomExpr: and: empty"
-            Right (x:xs) -> Right $ foldl andConstr x xs
-    processAtomExpr params@(_,_,orConstr) (AtomOr l)        =
-        case mapM (processAtomExpr params) l of
-            Left err     -> Left err
-            Right []     -> Left "processAtomExpr: or: empty"
-            Right (x:xs) -> Right $ foldl orConstr x xs
-    processAtomExpr params (AtomGroup l)     = processAtomExpr params l
-    processAtomExpr (f,_,_) (AtomPred k op v) = f k op v
+    parseTagOrData (AtomOr l)        = do
+        r <- mapM parseTagOrData l
+        case r of
+            []  -> Left "parseTagOrData: empty result in Or"
+            [x] -> Right x
+            _:_ -> Right $ foldl1 StructOr r
+    parseTagOrData (AtomGroup l)     =
+        parseTagOrData l
+    parseTagOrData (AtomPred k op v)
+        | isTag k   = toTagQuery k op v >>= \tq -> Right $ StructExpr $ Left tq
+        | isData k  = toDataQuery k op v >>= \dq -> Right $ StructExpr $ Right dq
+        | otherwise = Left "unknown type of expression"
 
     toDataQuery k op v =
         case k of
@@ -179,7 +206,7 @@ parseQuery queryString =
             "security" -> parseNum FieldSecurity op v
             "rating"   -> parseNum FieldRating op v
             "date"     -> Left ("date query not implemented")
-            _          -> Left ("unknown data atom: " ++ k)
+            _          -> Left ("unknown data query: " ++ k)
 
     parseNum f op v =
         DataNum f <$> parseNumOp op <*> parseInteger v
@@ -230,14 +257,10 @@ parseQuery queryString =
                 "tag"      -> Right Other
                 _          -> Left ("unknown tag category:" ++ k)
 
-    isData = atomRec $ flip elem dataFields
-    isTag  = atomRec $ flip elem tagFields
+    isData = flip elem dataFields
+    isTag  = flip elem tagFields
     dataFields = ["filesize", "size", "security", "rating", "date"]
     tagFields = ["person", "location", "group", "tag"]
-    atomRec f (AtomAnd l)      = all (atomRec f) l
-    atomRec f (AtomOr l)       = all (atomRec f) l
-    atomRec f (AtomGroup g)    = atomRec f g
-    atomRec f (AtomPred k _ _) = f k
 
     parseAtoms = parseAnd
     parseAnd = do
