@@ -86,8 +86,6 @@ data IndexTag
 
 newtype Index idx = Index Integer
 
---type Tag = String
-
 data DataInfo = DataInfo
     { dataSize     :: Word64 -- in bytes
     , dataDate     :: Maybe Elapsed -- unix seconds
