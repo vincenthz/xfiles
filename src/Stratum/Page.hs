@@ -1,16 +1,24 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Stratum.Page (page, layout, PageType(..), overview, byLocations, byGroups, byPersons) where
+module Stratum.Page
+    ( page, layout, PageType(..)
+    , overview
+    , byLocations, byGroups, byPersons, byUntagged
+    , digestInfo
+    ) where
 
-import Text.Blaze.Html5
-import Text.Blaze.Html5.Attributes hiding (span, title, form)
-import Prelude hiding (head, div, span, id)
+import           Text.Blaze.Html5 hiding (map, Tag)
+import           Text.Blaze.Html5.Attributes hiding (span, title, form)
+import           Prelude hiding (head, div, span, id)
+import qualified Prelude
+import           Crypto.Hash (HashAlgorithm, Digest)
+import           Data.Char (toLower)
+import           Storage.HashFS (Tag(..), Category(..))
 
-data PageType = Root | ByGroups | ByLocations | ByPersons
+data PageType = Root | ByGroups | ByLocations | ByPersons | ByUntagged | PageOther
     deriving (Show,Eq)
 
---page :: MarkupM t -> Html
-page :: PageType -> (PageType -> Markup) -> Html
-page pty lyt = docTypeHtml ! lang "en" $ do
+page :: PageType -> Markup -> Html
+page _ lyt = docTypeHtml ! lang "en" $ do
     head $ do
         meta ! charset "utf-8"
         meta ! httpEquiv "X-UA-Compatible" ! content "IE=edge"
@@ -35,7 +43,7 @@ page pty lyt = docTypeHtml ! lang "en" $ do
         --       <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
         --     <![endif]
     body $ do
-        _ <- lyt pty
+        _ <- lyt
         --  Bootstrap core JavaScript
         --     ==================================================
         --  Placed at the end of the document so the pages load faster
@@ -76,6 +84,7 @@ layout pty myContent = do
                 li ! activeClass ByGroups $ a ! href (relativePath "by-groups/") $ "By Groups"
                 li ! activeClass ByLocations $ a ! href (relativePath "by-locations/") $ "By Location"
                 li ! activeClass ByPersons $ a ! href (relativePath "by-persons/") $ "By Persons"
+                li ! activeClass ByUntagged $ a ! href (relativePath "untagged/") $ "Untagged"
             ul ! class_ "nav nav-sidebar" $ do
                 li $ a ! href "" $ "Search 1"
                 li $ a ! href "" $ "Search 2"
@@ -97,35 +106,44 @@ overview = do
             div ! id "page-content" $
                 span ""
 
-byLocations :: [String] -> Markup
-byLocations locations = do
+printItem :: String -> String -> Html
+printItem ty it = li $ a ! href (relativePath (ty ++ "/" ++ it ++ "/")) $ toHtml it
+
+byStringItems :: String -> [String] -> Markup
+byStringItems ty items =
     div ! class_ "row" $
         div ! class_ "col-sm-9" $
             div ! id "page-content" $
-                ul $ mapM_ printLocation locations
-  where
-    printLocation loc = li $ a ! href (relativePath ("location/" ++ loc ++ "/")) $ toHtml loc
+                ul $ mapM_ (printItem ty) items
+
+byLocations :: [String] -> Markup
+byLocations = byStringItems "location"
 
 byGroups :: [String] -> Markup
-byGroups groups = do
-    div ! class_ "row" $
-        div ! class_ "col-sm-9" $
-            div ! id "page-content" $
-                ul $ mapM_ printGroup groups
-  where
-    printGroup grp = li $ a ! href (relativePath ("group/" ++ grp ++ "/")) $ toHtml grp
+byGroups = byStringItems "group"
 
 byPersons :: [String] -> Markup
-byPersons groups = do
+byPersons = byStringItems "person"
+
+byUntagged :: HashAlgorithm h => [Digest h] -> Markup
+byUntagged digests =
     div ! class_ "row" $
         div ! class_ "col-sm-9" $
             div ! id "page-content" $
-                ul $ mapM_ printItems groups
+                ul $ mapM_ printItems digests
   where
-    printItems xitem = li $ a ! href (relativePath ("person/" ++ xitem ++ "/")) $ toHtml xitem
+    printItems it = li $ a ! href (relativePath ("digest" ++ "/" ++ show it ++ "/")) $ toHtml (show it)
 {-
         <input type="text" class="form-control" placeholder="2 BHK Flat, Pune Real Estate, Pest Control..." id="query" name="query" value="">
                    <div class="input-group-btn">
                   <button type="submit" class="btn btn-success"><span class="glyphicon glyphicon-search"></span></button>
                   </div>
                   -}
+
+digestInfo :: HashAlgorithm h => Digest h -> [Tag] -> Markup
+digestInfo digest tags =
+    div ! class_ "row" $
+        div ! class_ "col-sm-9" $
+            div ! id "page-content" $ do
+                p $ toHtml (show digest)
+                ul $ mapM_ (\(Tag mcat n) -> printItem (map toLower $ show $ maybe Other Prelude.id mcat) n) tags

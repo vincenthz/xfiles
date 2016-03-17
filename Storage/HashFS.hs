@@ -9,6 +9,7 @@ module Storage.HashFS
     , OutputDesc(..)
     , outputDigest
     , inputDigest
+    , inputDigestCtx
     , hashFile
     , hashFileContext
     , withConfig
@@ -291,3 +292,6 @@ pushFromTo destProvider sourceProvider digest =
     -- local retrieval, plus remote sending.
     remoteToRemote _ _ =
         error "remoteToRemote is not implemented yet"
+
+inputDigestCtx :: HashAlgorithm h => Context h -> String -> Maybe (Digest h)
+inputDigestCtx _ x = inputDigest OutputHex x

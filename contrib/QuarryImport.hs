@@ -59,7 +59,7 @@ toIndex :: SqlValue -> Index a
 toIndex (SqlInt64 v) = Index v
 toIndex s = error ("cannot c0nvert to index : " ++ show s)
 
-doImport disp path context = do
+doImport _ path context = do
     -- find provider
     let !prov = maybe (error "cannot find imports provider") id $ findProviderByName context "imports"
         !meta = head $ contextMetaviders context
