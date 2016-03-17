@@ -239,6 +239,30 @@ Executable           hashfsd
   Buildable:         True
   default-language:  Haskell2010
 
+Executable           stratum
+  Main-Is:           Stratum.hs
+  Hs-Source-Dirs:    src
+  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports -threaded -rtsopts
+  Build-depends:     base >= 4 && < 5
+                   , mtl
+                   , xfiles
+                   , process
+                   , network
+                   , directory
+                   , filepath
+                   , hourglass
+                   , memory
+                   , cryptonite
+                   , bytestring
+                   , utf8-string
+                   , http-types
+                   , wai
+                   , warp
+                   , blaze-builder
+                   , blaze-html
+  Buildable:         True
+  default-language:  Haskell2010
+
 Executable           hashfs-utils
   Main-Is:           HashfsUtils.hs
   Hs-Source-Dirs:    src

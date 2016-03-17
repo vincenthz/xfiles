@@ -254,13 +254,14 @@ parseQuery queryString =
                 "person"   -> Right Person
                 "location" -> Right Location
                 "group"    -> Right Group
+                "category" -> Right Category
                 "tag"      -> Right Other
                 _          -> Left ("unknown tag category:" ++ k)
 
     isData = flip elem dataFields
     isTag  = flip elem tagFields
     dataFields = ["filesize", "size", "security", "rating", "date"]
-    tagFields = ["person", "location", "group", "tag"]
+    tagFields = ["person", "location", "group", "tag", "category"]
 
     parseAtoms = parseAnd
     parseAnd = do

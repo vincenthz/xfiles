@@ -39,6 +39,7 @@ module Storage.HashFS
     , MetaProvider
     , Tag(..)
     , Category(..)
+    , unCategorize
     -- * Providers
     , Providers
     , Provider(..)

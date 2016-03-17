@@ -13,11 +13,14 @@ import           Data.Word
 newtype DateTime = DateTime Word64
     deriving (Show,Eq)
 
-data Category = Group | Person | Location | Other
+data Category = Group | Person | Location | Category | Other
     deriving (Show,Eq,Ord)
 
 data Tag = Tag (Maybe Category) String
     deriving (Show,Eq,Ord)
+
+unCategorize :: Tag -> String
+unCategorize (Tag _ s) = s
 
 printCategory :: Category -> Char
 printCategory cat =
@@ -25,6 +28,7 @@ printCategory cat =
         Group  -> 'g'
         Person -> 'p'
         Location -> 'l'
+        Category -> 'c'
         Other  -> 'o'
 
 tagToString :: Tag -> String
@@ -35,6 +39,7 @@ parseCategory :: Char -> Maybe Category
 parseCategory 'g' = Just Group
 parseCategory 'p' = Just Person
 parseCategory 'l' = Just Location
+parseCategory 'c' = Just Category
 parseCategory 'o' = Just Other
 parseCategory _   = Nothing
 
