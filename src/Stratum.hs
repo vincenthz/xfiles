@@ -1,6 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import Control.Concurrent
+import Control.Concurrent.Chan
+import Control.Concurrent.MVar
+
+import Control.Monad
+
 import Network.Wai.Handler.Warp
 import Network.Wai
 import Network.HTTP.Types hiding (parseQuery)
@@ -11,6 +17,7 @@ import qualified Data.ByteString.Lazy.Char8 as LC
 import qualified Data.ByteArray as B (convert)
 
 import Data.List
+import Data.FileFormat
 
 import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.ByteString (fromByteString)
@@ -20,14 +27,21 @@ import Storage.HashFS.Query
 import Storage.HashFS.Meta
 import Storage.HashFS hiding (Other)
 
-import Crypto.Hash (HashAlgorithm)
+import Crypto.Hash (HashAlgorithm, Digest)
 
 import Stratum.Page
 
 import System.FilePath
 import System.Directory
+import System.Process
+import System.Exit
 
 data ContentType = Html | Css | Js | Svg | Tiff | Png | Other
+
+data Web h = Web
+    { getContext :: Context h
+    , thumbnailQueue :: Chan (Digest h, MVar Bool)
+    }
 
 --toCty :: ContentType -> AttributeValue
 toCty :: ContentType -> B.ByteString
@@ -62,12 +76,13 @@ data GetQuery =
     | GetLocation B.ByteString
     | GetPerson B.ByteString
     | GetDigest B.ByteString
+    | GetThumbnail B.ByteString
     | GetRoot
     | FaviconIco
     deriving (Show,Eq)
 
-doGet :: HashAlgorithm h => Context h -> Application
-doGet ctx req respond = do
+doGet :: HashAlgorithm h => Web h -> Application
+doGet web req respond = do
     let q = case pchunks of
             "":r@("css":_)          -> Just $ GetCSS r
             "":r@("js":_)           -> Just $ GetJS r
@@ -80,13 +95,14 @@ doGet ctx req respond = do
             "":"person":p:"":[]     -> Just $ GetPerson p
             "":"location":p:"":[]   -> Just $ GetLocation p
             "":"group":p:"":[]      -> Just $ GetGroup p
-            "":"digest":p:"":[]      -> Just $ GetDigest p
+            "":"digest":p:"":[]     -> Just $ GetDigest p
+            "":"thumbnail":p:"":[]  -> Just $ GetThumbnail p
             "":"":[]                -> Just $ GetRoot
             _                       -> Nothing
     case q of
         Nothing -> do
-            putStrLn (show (requestMethod req) ++ " " ++ show (rawPathInfo req))
-            respond $ responseLBS status404 [] "Requested thing not available"
+            putStrLn ("UNKNOWN QUERY: " ++ show (requestMethod req) ++ " " ++ show (rawPathInfo req))
+            respond $ responseLBS status404 [] "Requested path not available"
         Just GetRoot      -> doSlash
         Just FaviconIco   -> respond $ responseLBS status404 [] "not found"
         Just (GetCSS r)   -> getFile Css r
@@ -100,19 +116,37 @@ doGet ctx req respond = do
         Just (GetLocation i) -> getByTag Location i
         Just (GetPerson i) -> getByTag Person i
         Just (GetDigest d) -> getByDigest d
+        Just (GetThumbnail d) -> getThumbnail d
   where
     pchunks = splitSlash (rawPathInfo req)
+    ctx = getContext web
     getByTag cat i = do
         let x   = htmlUnescape $ UTF8.toString i
-            tag = Tag (Just cat) x
-        let metaviders = contextMetaviders ctx
+            tag = Tag cat x
+        let metaviders = contextMetaviders (getContext web)
         digests <- metaFindDigestsWhich (head metaviders) (StructExpr $ DataTag $ StructExpr $ TagEqual tag)
         respondDigestList PageOther digests
     getByDigest d = do
         let x = htmlUnescape $ UTF8.toString d
-        case inputDigestCtx ctx x of
+        case inputDigestCtx (getContext web) x of
             Nothing  -> respond $ responseLBS status500 (contentType Html) ("invalid digest " `L.append` L.fromStrict d)
             Just dig -> respondDigestPage dig
+    getThumbnail d = do
+        let x = htmlUnescape $ UTF8.toString d
+        case inputDigestCtx (getContext web) x of
+            Nothing  -> respond $ responseLBS status500 (contentType Html) ("invalid digest " `L.append` L.fromStrict d)
+            Just dig -> do
+                let path = thumbnailPath dig
+                alreadyThere <- doesFileExist path
+                if alreadyThere
+                    then respond $ responseFile status200 (contentType Png) path Nothing
+                    else do
+                        sync <- newEmptyMVar
+                        writeChan (thumbnailQueue web) (dig, sync)
+                        r <- readMVar sync
+                        case r of
+                            True -> respond $ responseFile status200 (contentType Png) path Nothing
+                            False -> respond $ responseLBS status500 (contentType Html) ("invalid digest " `L.append` L.fromStrict d)
     doByDigests pty = do
         let metaviders = contextMetaviders ctx
         digests <- metaFindDigestsNotTagged (head metaviders)
@@ -149,8 +183,8 @@ doGet ctx req respond = do
             then respond $ responseFile status200 (contentType Other) fp Nothing
             else putStrLn ("file " ++ show fp ++ " not found") >> respond (responseLBS status404 [] "not found")
 
-doPost :: HashAlgorithm h => Context h -> Application
-doPost ctx req respond = do
+doPost :: HashAlgorithm h => Web h -> Application
+doPost web req respond = do
     m <- consumeBody [] 2048
     case m of
         Left err -> respond $ responseLBS status400 [] ("query error: " `mappend` L.fromStrict (UTF8.fromString err))
@@ -162,6 +196,7 @@ doPost ctx req respond = do
                 builder = mconcat (intersperse comma $ map (fromByteString . B.pack . show) digests)
             respond $ responseBuilder status200 [] builder
   where
+    ctx = getContext web
     consumeBody acc limit
         | limit < 0 = return $ Left "query over limit"
         | otherwise = do
@@ -183,15 +218,51 @@ htmlEscape (x:xs)
     | x == '/'  = '%':'2':'f':htmlEscape xs
     | otherwise = x:htmlEscape xs
 
-
-app :: HashAlgorithm h => Context h -> Application
-app ctx req respond = do
+app :: HashAlgorithm h => Web h -> Application
+app web req respond = do
     case requestMethod req of
-        "GET"  -> doGet ctx req respond
-        "POST" -> doPost ctx req respond
+        "GET"  -> doGet web req respond
+        "POST" -> doPost web req respond
         _      -> do
             putStrLn (show (requestMethod req) ++ " " ++ show (rawPathInfo req))
             respond $ responseLBS status500 [] "unknown method"
 
 main :: IO ()
-main = withConfig $ \ctx -> run 8080 (app ctx)
+main = withConfig $ \ctx -> do
+    c <- newChan
+    _ <- forkIO $ forever $ do
+        (digest, syncVar) <- readChan c
+        putStrLn ("making thumbnail for : " ++ show digest)
+
+        localDigestPath <- getLocalPath (contextProviders ctx) digest
+        case localDigestPath of
+            Nothing -> putMVar syncVar False
+            Just digestPath -> do
+                let thumbPath = thumbnailPath digest
+
+                ff <- getFileformat digestPath
+                success <- case ff of
+                    -- images
+                    FT_JPEG      -> useConvert digestPath thumbPath
+                    FT_JPEG_EXIF -> useConvert digestPath thumbPath
+                    FT_JFIF_EXIF -> useConvert digestPath thumbPath
+                    FT_PNG       -> useConvert digestPath thumbPath
+                    -- document
+                    FT_PDF _     -> useConvertPdf digestPath thumbPath
+                    _            -> return False
+                putStrLn ("done thumbnail : " ++ show digest)
+                putMVar syncVar success
+
+    let web = Web { getContext = ctx, thumbnailQueue = c }
+    run 8080 (app web)
+
+  where
+    thumbsize :: Int
+    thumbsize = 200
+
+    useConvert s d = do
+        ec <- rawSystem "convert" ["-thumbnail", "x" ++ show thumbsize, s, d]
+        return $ ec == ExitSuccess
+    useConvertPdf s d = do
+        ec <- rawSystem "convert" ["-thumbnail", "x" ++ show thumbsize, s ++ "[0]", d]
+        return $ ec == ExitSuccess

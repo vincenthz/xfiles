@@ -16,7 +16,7 @@ newtype DateTime = DateTime Word64
 data Category = Group | Person | Location | Category | Other
     deriving (Show,Eq,Ord)
 
-data Tag = Tag (Maybe Category) String
+data Tag = Tag Category String
     deriving (Show,Eq,Ord)
 
 unCategorize :: Tag -> String
@@ -32,27 +32,21 @@ printCategory cat =
         Other  -> 'o'
 
 tagToString :: Tag -> String
-tagToString (Tag (Just cat) s) = printCategory cat : ':' : s
-tagToString (Tag Nothing    s) = s
+tagToString (Tag cat s) = printCategory cat : ':' : s
 
-parseCategory :: Char -> Maybe Category
-parseCategory 'g' = Just Group
-parseCategory 'p' = Just Person
-parseCategory 'l' = Just Location
-parseCategory 'c' = Just Category
-parseCategory 'o' = Just Other
-parseCategory _   = Nothing
+parseCategory :: Char -> Category
+parseCategory 'g' = Group
+parseCategory 'p' = Person
+parseCategory 'l' = Location
+parseCategory 'c' = Category
+parseCategory 'o' = Other
+parseCategory _   = Other
 
 tagFromString :: String -> Tag
 tagFromString s =
     case s of
-        c:':':r ->
-            case parseCategory c of
-                Just cat -> Tag (Just cat) r
-                Nothing  -> Tag Nothing s
-        _ ->
-            Tag Nothing s
-
+        c:':':r -> Tag (parseCategory c) r
+        _       -> Tag Other s
 
 -- | Configuration for HashFS
 data HashFSConf h = HashFSConf

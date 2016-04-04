@@ -100,9 +100,9 @@ main = defaultMain $ do
             disp <- displayInit
             let args = toParam argDescs
                 repo = toParam repoD
-            let metaTags = map (Tag (Just Group)) (toParam groupD)
-                        ++ map (Tag (Just Person)) (toParam personD)
-                        ++ map (Tag (Just Other)) (toParam tagD)
+            let metaTags = map (Tag Group) (toParam groupD)
+                        ++ map (Tag Person) (toParam personD)
+                        ++ map (Tag Other) (toParam tagD)
             withConfig (doImport disp metaTags repo args)
 
     command "untagged" $ do

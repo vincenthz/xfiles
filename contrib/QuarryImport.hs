@@ -84,10 +84,10 @@ doImport _ path context = do
     mapM_ (putStrLn . show) dat
     return ()
   where
-    toTag (t, "personal") = Tag Nothing t
-    toTag (t, "person")   = Tag (Just Person) t
-    toTag (t, "location") = Tag (Just Location) t
-    toTag (t, _)          = Tag Nothing t
+    toTag (t, "personal") = Tag Other t
+    toTag (t, "person")   = Tag Person t
+    toTag (t, "location") = Tag Location t
+    toTag (t, _)          = Tag Other t
 
 readAllDb path = do
     let dbPath = path </> "quarry.db"

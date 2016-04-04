@@ -94,16 +94,17 @@ appendFileStat mv sz fmt = modifyMVar_ mv $ \st -> return $
        , stFormats = toFormatSize fmt sz `mappend` stFormats st
        }
 
-printStats detailed summ mv = readMVar mv >>= \st -> do
+printStats detailed needHighlight summ mv = readMVar mv >>= \st -> do
     either display summarySet summ $ (txt st)
   where
     txt st = [Fg Red, LeftT 6 (show $ stFiles st), T " "
-             ,Fg Blue, RightT 8 (show $ stData st), T " "
+             ,Fg szCol, RightT 8 (show $ stData st), T " "
              ]
              ++ [Fg Green, T (stCurrentDir st), T " "]
              ++ formatDisplay (showFormat $ stFormats st)
              ++ [NA]
       where
+        szCol = if needHighlight (stData st) then Yellow else Blue
         formatDisplay :: [a] -> [a]
         formatDisplay = either (const id) (const (const [])) summ
                       . if not detailed || onlyOneFormat (stFormats st) then const [] else id
@@ -117,13 +118,13 @@ printStats detailed summ mv = readMVar mv >>= \st -> do
 
 while a f = f a >>= \(b, a') -> if b then while a' f else return ()
 
-xdu term detailed dirs = do
+xdu term detailed highlighted dirs = do
     display term [Fg Red, LeftT 6 "#file ", T " ", RightT 8 "size", NA]
     displayLn term White ""
     sts <- mapM showStats dirs
 
     displayLn term Blue "========================================================="
-    printStats detailed (Left term) =<< newMVar (mconcat $ catMaybes sts)
+    printStats detailed highlighted (Left term) =<< newMVar (mconcat $ catMaybes sts)
 
     displayLn term White ""
     displayLn term White ""
@@ -141,7 +142,7 @@ xdu term detailed dirs = do
         sz <- getFileSize path
         appendFileStat st sz (filePathToFormat path)
         setCurrentDir st path
-        printStats detailed (Left term) st
+        printStats detailed highlighted (Left term) st
         displayLn term Red ""
         Just <$> readMVar st
 
@@ -176,11 +177,11 @@ xdu term detailed dirs = do
             if isFinished
                 then return (False, delay)
                 else do
-                    printStats detailed (Right summ) st
+                    printStats detailed highlighted (Right summ) st
                     threadDelay delay
                     return (True, min (delay + 20000) 200000)
         setCurrentDir st rootDir
-        printStats detailed (Left term) st
+        printStats detailed highlighted (Left term) st
         displayLn term Red ""
         Just <$> readMVar st
 
@@ -193,6 +194,12 @@ xdu term detailed dirs = do
             diff l []  = l
             diff [] l  = l
 
+toThreshold :: Integer -> String -> (Bytes -> Bool)
+toThreshold n "g" = \i -> i > toBytes (n * 1024 * 1024 * 1024)
+toThreshold n "m" = \i -> i > toBytes (n * 1024 * 1024)
+toThreshold n "k" = \i -> i > toBytes (n * 1024)
+toThreshold _ suffix = error $ "unknown sufix: " ++ suffix ++ " expected 'g', 'm', 'b'"
+
 -- extensive disk usage
 main = do
     term <- displayInit
@@ -201,9 +208,16 @@ main = do
         programDescription "interactive and detailed disk usage reporting"
         programVersion (Paths_xfiles.version)
         detailedFlag <- flag $ FlagShort 'd' <> FlagLong "detailed"
+        highlight    <- flagParam (FlagShort 'h' <> FlagLong "highlight") (FlagOptional "1G" Right)
         allArgs      <- remainingArguments "FILE"
-        action $ \toParam ->
+        action $ \toParam -> do
+            let highlighted = case fmap (span isDigit) (toParam highlight) of
+                        Just ([], suffix) -> toThreshold 1 (map toLower suffix)
+                        Just (n, suffix)  -> toThreshold (read n) (map toLower suffix)
+                        Nothing           -> \_ -> False
+            
             xdu term
                 (toParam detailedFlag)
+                highlighted
                 (if null (toParam allArgs) then ["."] else toParam allArgs)
 

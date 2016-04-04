@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Stratum.Page
     ( page, layout, PageType(..)
+    , thumbnailPath
     , overview
     , byLocations, byGroups, byPersons, byUntagged
     , digestInfo
@@ -13,9 +14,16 @@ import qualified Prelude
 import           Crypto.Hash (HashAlgorithm, Digest)
 import           Data.Char (toLower)
 import           Storage.HashFS (Tag(..), Category(..))
+import           System.FilePath ((</>))
 
 data PageType = Root | ByGroups | ByLocations | ByPersons | ByUntagged | PageOther
     deriving (Show,Eq)
+
+thumbnailPath :: HashAlgorithm h => Digest h -> FilePath
+thumbnailPath d = "thumbnail" </> (show d ++ ".png")
+
+thumbnailUrl :: HashAlgorithm h => Digest h -> String
+thumbnailUrl d = "thumbnail" </> show d ++ "/"
 
 page :: PageType -> Markup -> Html
 page _ lyt = docTypeHtml ! lang "en" $ do
@@ -146,4 +154,5 @@ digestInfo digest tags =
         div ! class_ "col-sm-9" $
             div ! id "page-content" $ do
                 p $ toHtml (show digest)
-                ul $ mapM_ (\(Tag mcat n) -> printItem (map toLower $ show $ maybe Other Prelude.id mcat) n) tags
+                img ! src (relativePath $ thumbnailUrl digest)
+                ul $ mapM_ (\(Tag cat n) -> printItem (map toLower $ show cat) n) tags

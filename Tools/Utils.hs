@@ -1,5 +1,6 @@
 module Tools.Utils
     ( Bytes
+    , toBytes
     , BytesCondensed(..)
     , getFileSize
     ) where
@@ -11,9 +12,12 @@ import           System.IO
 import           Text.Printf
 
 newtype Bytes = Bytes Word64
-    deriving (Eq)
+    deriving (Eq,Ord)
 newtype BytesCondensed = BytesCondensed Bytes
-    deriving (Eq)
+    deriving (Eq,Ord)
+
+toBytes :: (Integral a, Num a) => a -> Bytes
+toBytes n = Bytes (fromIntegral n)
 
 instance Show Bytes where
     show (Bytes w) = showSZ w

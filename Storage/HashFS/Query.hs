@@ -242,10 +242,10 @@ parseQuery queryString =
     toTagQuery k op v = do
         cat <- getGroup
         case op of
-            "="  -> Right $ TagEqual $ Tag (Just cat) v
-            "==" -> Right $ TagEqual $ Tag (Just cat) v
-            "!=" -> Right $ TagNotEqual $ Tag (Just cat) v
-            "/=" -> Right $ TagNotEqual $ Tag (Just cat) v
+            "="  -> Right $ TagEqual $ Tag cat v
+            "==" -> Right $ TagEqual $ Tag cat v
+            "!=" -> Right $ TagNotEqual $ Tag cat v
+            "/=" -> Right $ TagNotEqual $ Tag cat v
             "~=" -> Right $ TagLike cat v
             _    -> Left ("unknown tag operator : " ++ show op ++ " after " ++ show k)
       where
