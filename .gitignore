@@ -1,4 +1,7 @@
 dist
 *.hi
 *.o
+*.tix
+*.mix
+.stack-work
 test-sql-tmp/
