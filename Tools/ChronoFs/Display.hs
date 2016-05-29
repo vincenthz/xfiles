@@ -8,5 +8,5 @@ import Control.Monad.State
 
 showStat :: Bool -> Backup ()
 showStat nl = do
-    (Stats e d s p sz) <- gets stats 
+    (Stats e d s p sz) <- gets stats
     printTerminal Yellow (show p ++ " done -- " ++ showSZ sz ++ " added (" ++ show s ++ "S," ++ show d ++ "D," ++ show e ++ "E)" ++ (if nl then "\n" else "\r") )

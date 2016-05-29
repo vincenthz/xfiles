@@ -5,10 +5,12 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Main where
 
-import Filesystem (getHomeDirectory, createDirectory, isFile, copyFile, writeFile, listDirectory)
-import Filesystem.Path
-import Filesystem.Path.Rules
-import Prelude hiding (FilePath, writeFile, readFile)
+import System.Directory
+import System.FilePath
+--import Filesystem (getHomeDirectory, createDirectory, isFile, copyFile, writeFile, listDirectory)
+--import Filesystem.Path
+--import Filesystem.Path.Rules
+import Prelude -- hiding (FilePath, writeFile, readFile)
 import "mtl" Control.Monad.State
 import Control.Monad.Reader
 
@@ -26,11 +28,20 @@ import Data.Maybe
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
+import qualified Data.ByteString.UTF8 as UTF8
 
 import System.Console.GetOpt
 import Console.Display
 
 import Tools.ChronoFs
+
+listDirectory :: FilePath -> IO [FilePath]
+listDirectory dir = toPath <$> getDirectoryContents dir
+  where
+    toPath []        = []
+    toPath (".":xs)  = toPath xs
+    toPath ("..":xs) = toPath xs
+    toPath (x:xs)    = (dir </> x) : toPath xs
 
 cmdBackup opts backupName = do
     bdir <- getBackupDir opts
@@ -50,15 +61,15 @@ cmdBackup opts backupName = do
         Just ent -> do
             (!hash,_) <- runBackup (writeEntAsHash [ent]) bs cfg
             putStrLn $ show $ stats finalState
-            let commitFilename = decode posix $ B.concat [BC.pack backupName, "-"
+            let commitFilename = UTF8.toString $ B.concat [BC.pack backupName, "-"
                                                          ,(BC.pack $ show (truncate initialTime :: Integer)), "-"
                                                          ,(BC.pack $ show (truncate finalTime :: Integer))]
             let commitFilepath = bdir </> "backup" </> commitFilename
-            writeFile commitFilepath (hexHashAsBs hash `B.append` "\n")
-            putStrLn $ (encodeString posix commitFilename ++ " written in " ++ (show (finalTime - initialTime)))
-    where 
+            B.writeFile commitFilepath (hexHashAsBs hash `B.append` "\n")
+            putStrLn $ (commitFilename ++ " written in " ++ (show (finalTime - initialTime)))
+    where
           initCheck = do bdir <- asks backupDir
-                         mapM_ (liftIO . createDirectory True) [ bdir, bdir </> "tmp", bdir </> "data", bdir </> "meta", bdir </> "backup" ]
+                         mapM_ (liftIO . createDirectoryIfMissing True) [ bdir, bdir </> "tmp", bdir </> "data", bdir </> "meta", bdir </> "backup" ]
           loop :: FilePath -> FilePath -> Backup (Maybe Ent)
           loop skipDir dir
             | dir == skipDir = return Nothing
@@ -67,13 +78,13 @@ cmdBackup opts backupName = do
                 m <- runIO (listDirectory dir) (return []) (return)
                 allEnts <- catMaybes <$> mapM (processEnt skipDir) m
                 !hash <- writeEntAsHash allEnts
-                !fs <- liftIO $ getSymbolicLinkStatus (encode posix dir)
+                !fs <- liftIO $ getSymbolicLinkStatus (UTF8.fromString dir)
                 return $ Just $ Ent { entType  = EntDir
                                     , entPerms = fileMode fs
                                     , entMTime = realToFrac $ modificationTime fs
                                     , entCTime = realToFrac $ statusChangeTime fs
                                     , entHash  = ContentHash hash
-                                    , entName  = filename dir
+                                    , entName  = takeFileName dir
                                     }
           processEnt skipDir ent = do
             fm <- liftIO (either error id <$> getFileMetas ent)
@@ -84,13 +95,13 @@ cmdBackup opts backupName = do
                 | fileMetaType fm == SymbolicLink = doSymlink
                 | fileMetaType fm == RegularFile  = doFile
                 | otherwise                       = return Nothing
-                where doSymlink = do lnk <- liftIO $ readSymbolicLink (encode posix ent)
+                where doSymlink = do lnk <- liftIO $ readSymbolicLink (UTF8.fromString ent)
                                      return $ Just $ Ent { entType = EntLink
                                                          , entPerms = fileMetaMode fm
                                                          , entMTime = realToFrac $ fileMetaModTime fm
                                                          , entCTime = realToFrac $ fileMetaChTime fm
                                                          , entHash  = ContentLink lnk
-                                                         , entName  = filename ent
+                                                         , entName  = takeFileName ent
                                                          }
                       doFile = addOne >> processFileNow ent fm (ty,hash)
 
@@ -109,23 +120,23 @@ cmdBackup opts backupName = do
                                 finalDir1 = bdir </> "data" </> fromString hashDir
                                 finalDir  = finalDir1 </> fromString hashDir2
                                 finalName = finalDir </> fromString hashFile
-                            exists <- liftIO (isFile finalName)
+                            exists <- liftIO (doesFileExist finalName)
                             if exists
                                 then incDups
                                 else do
                                         addBytes (fromIntegral $ fileMetaSize fm)
                                         useHard <- asks backupUseHardlinks
-                                        runIO_ (createDirectory True finalDir1)
-                                        runIO_ (createDirectory True finalDir)
+                                        runIO_ (createDirectoryIfMissing True finalDir1)
+                                        runIO_ (createDirectoryIfMissing True finalDir)
                                         if useHard
                                             then runIO_ (hardlink ent finalName)
-                                            else runIO_ (copyFile ent tmpName >> rename (encode posix tmpName) (encode posix finalName))
+                                            else runIO_ (copyFile ent tmpName >> rename (UTF8.fromString tmpName) (UTF8.fromString finalName))
                             return $ Just $ Ent { entType  = EntFile
                                                 , entPerms = fileMetaMode fm
                                                 , entMTime = realToFrac $ fileMetaModTime fm
                                                 , entCTime = realToFrac $ fileMetaChTime fm
                                                 , entHash  = ContentHash hash
-                                                , entName  = filename ent
+                                                , entName  = takeFileName ent
                                                 }
           addOne = incProcessed >> showStat False
           gatherFileMeta ent = do
@@ -138,7 +149,7 @@ cmdBackup opts backupName = do
 cmdList opts = do
     bdir    <- getBackupDir opts
     backups <- listDirectory (bdir </> "backup")
-    mapM_ (putStrLn . encodeString posix . filename) backups
+    mapM_ (putStrLn . takeFileName) backups
 
 cmdListName = undefined
 
@@ -159,7 +170,7 @@ cmdGet opts name = do
 data EntPrint = Raw | Pretty
 
 printEnt Raw ent = do
-    putStrLn ("filename " ++ encodeString posix (entName ent))
+    putStrLn ("filename " ++ entName ent)
     case entHash ent of
         ContentHash h   -> putStrLn ("hash " ++ hexHash h)
         ContentLink lnk -> putStrLn ("link " ++ show lnk)
@@ -168,8 +179,8 @@ printEnt Raw ent = do
     putStrLn ("ctime " ++ (show $ entMTime ent))
 
 printEnt Pretty ent = do
-    putStrLn ("+ " ++ encodeString posix (entName ent) ++ marker ++ " (" ++ content ++ ")")
-  where 
+    putStrLn ("+ " ++ entName ent ++ marker ++ " (" ++ content ++ ")")
+  where
         content = case entHash ent of
                     ContentLink lnk -> show lnk
                     ContentHash h   -> showSmall (hexHash h)
@@ -204,9 +215,9 @@ cmdShow opts name Nothing = do
         hash <- readBackup_ name
         ents <- readMeta_ hash
         liftIO $ mapM_ (printEnt Pretty) ents
-cmdShow opts name (Just (decodeString posix -> dir))
-    | absolute dir = error "source path cannot be absolute"
-    | otherwise    = getBackupDir opts >>= runBackupRO doShow . defaultBackupConfig
+cmdShow opts name (Just dir)
+    | isAbsolute dir = error "source path cannot be absolute"
+    | otherwise      = getBackupDir opts >>= runBackupRO doShow . defaultBackupConfig
         where doShow = do
                     hash <- readBackup_ name
                     ents <- readMeta_ hash
@@ -216,17 +227,17 @@ cmdShow opts name (Just (decodeString posix -> dir))
                     liftIO $ printEnt Pretty rootEnt
                     liftIO $ mapM_ (printEnt Pretty) children
 
-cmdDu opts _name (decodeString posix -> dir)
-    | absolute dir = error "source path cannot be absolute"
-    | otherwise    = getBackupDir opts >>= runBackupRO doDu . defaultBackupConfig
+cmdDu opts _name dir
+    | isAbsolute dir = error "source path cannot be absolute"
+    | otherwise      = getBackupDir opts >>= runBackupRO doDu . defaultBackupConfig
         where doDu = do
                     --hash <- readBackup_ name
                     --ents <- readMeta_ hash
                     error "du is not implemented"
 
-cmdRestore opts name (decodeString posix -> rootDir) (decodeString posix -> dirTo)
-    | absolute rootDir = error "source path cannot be absolute"
-    | otherwise        = getBackupDir opts >>= runBackupRO doRestore . defaultBackupConfig
+cmdRestore opts name rootDir dirTo
+    | isAbsolute rootDir = error "source path cannot be absolute"
+    | otherwise          = getBackupDir opts >>= runBackupRO doRestore . defaultBackupConfig
   where doRestore = do
             hash <- readBackup_ name
             ents <- readMeta_ hash
@@ -250,11 +261,13 @@ cmdRestore opts name (decodeString posix -> rootDir) (decodeString posix -> dirT
                                         liftIO $ symlink p (dirTo </> n)
                         return ()
 
+allOpts :: [OptDescr AllOpt]
 allOpts =
     [ Option ['u'] ["user"] (NoArg UserInstall) "use the user installation"
     , Option ['p'] ["path"] (ReqArg ExplicitInstall "path") "use an explicit path"
     ]
 
+main :: IO ()
 main = do
     rawArgs <- getArgs
     let (opts, args, errs) = getOpt RequireOrder allOpts rawArgs

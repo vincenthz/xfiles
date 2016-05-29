@@ -9,11 +9,11 @@ import Data.Serialize.Put
 import Data.Serialize.Get
 import qualified Data.ByteString as B
 import qualified Data.ByteArray as BA
-import Filesystem.Path.Rules as FP (encode, decode, posix)
 import Control.Applicative
 import Control.Monad
 import Crypto.Hash
 
+import qualified Data.ByteString.UTF8 as UTF8
 
 marshallEnt :: Ent -> B.ByteString
 marshallEnt ent = runPut $ do
@@ -26,7 +26,7 @@ marshallEnt ent = runPut $ do
     putContent (entHash ent)
     putByteString nameMarshalled
   where nameMarshalled :: B.ByteString
-        nameMarshalled = FP.encode FP.posix $ entName ent
+        nameMarshalled = UTF8.fromString $ entName ent
 
         putContent (ContentHash (Hash h)) = putByteString (BA.convert h)
         putContent (ContentLink b) = putByteString btrans
@@ -56,7 +56,7 @@ parseEnt = do
     mtime <- getWord64le
     ctime <- getWord64le
     h     <- if t == EntLink then getLinkAsHash else getHash
-    filename <- FP.decode FP.posix <$> getByteString (fromIntegral len)
+    filename <- UTF8.toString <$> getByteString (fromIntegral len)
     return $ Ent { entType  = t
                  , entPerms = fromIntegral perms
                  , entMTime = realToFrac mtime

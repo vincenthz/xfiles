@@ -11,17 +11,17 @@ import qualified Control.Exception as E
 import           Console.Display
 import           System.IO (withFile, IOMode(..), Handle)
 import qualified System.Posix.Files.ByteString as RawFiles
-import           Filesystem (getHomeDirectory)
-import           Filesystem.Path.Rules
-import           Filesystem.Path
 import           Text.Printf
 import           Tools.ChronoFs.Monad
 import           Tools.ChronoFs.Config
 import           Tools.ChronoFs.Types
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString as B
+import qualified Data.ByteString.UTF8 as UTF8
 import qualified Data.ByteArray.Encoding as BA
-import           Prelude hiding (FilePath)
+import           Prelude
+import           System.Directory
+import           System.FilePath
 
 import           Crypto.Hash
 
@@ -49,9 +49,9 @@ data AllOpt = UserInstall | ExplicitInstall String
 getBackupDir :: [AllOpt] -> IO FilePath
 getBackupDir opts = do
     home <- getHomeDirectory
-    let userPath = (home </> decodeString posix backupDirName)
+    let userPath = (home </> backupDirName)
     return $ maybe userPath id $ foldl (doAcc userPath) Nothing opts
-  where doAcc _  _   (ExplicitInstall p) = Just $ decodeString posix p
+  where doAcc _  _   (ExplicitInstall p) = Just p
         doAcc hf _    UserInstall        = Just hf
         --doAcc _  acc _                   = acc
 
@@ -86,7 +86,7 @@ hashHex = hashHexAsBs . BC.pack
 
 getFileMetas :: FilePath -> IO (Either String FileMeta)
 getFileMetas filepath = catchIO ("getFileMetas " ++ show filepath) $ do
-    fs <- RawFiles.getSymbolicLinkStatus (encode posix filepath)
+    fs <- RawFiles.getSymbolicLinkStatus (UTF8.fromString filepath)
     return $ FileMeta (toFt fs)
                       (RawFiles.fileMode fs)
                       (RawFiles.modificationTimeHiRes fs)
@@ -103,7 +103,7 @@ getFileMetas filepath = catchIO ("getFileMetas " ++ show filepath) $ do
             | otherwise                     = error "unrecognized file type"
 
 getFileHash :: FilePath -> IO Hash
-getFileHash f = withFile (encodeString posix f) ReadMode $ \h -> loop h hashInit
+getFileHash f = withFile f ReadMode $ \h -> loop h hashInit
   where loop :: Handle -> Context HashT -> IO Hash
         loop h !c = do
             r <- B.hGet h (16*1024)

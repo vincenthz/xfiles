@@ -14,9 +14,7 @@ import Data.Default.Class
 import System.Posix.Types
 import Data.Time.Clock.POSIX
 import Data.ByteString (ByteString)
-import Filesystem.Path
-import Filesystem.Path.CurrentOS ()
-import Prelude hiding (FilePath)
+import Prelude
 import Data.Word
 import Crypto.Hash
 

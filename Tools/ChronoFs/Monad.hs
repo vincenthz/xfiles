@@ -17,7 +17,6 @@ module Tools.ChronoFs.Monad
     , addBytes
     ) where
 
-import Filesystem.Path.CurrentOS
 import Control.Monad.State
 import Control.Monad.Reader
 import Control.Applicative
@@ -25,7 +24,7 @@ import Data.Word
 import Tools.ChronoFs.Types
 import Console.Display
 import Data.FileFormat
-import Prelude hiding (FilePath)
+import Prelude
 
 data BackupConfig = BackupConfig
     { backupDir          :: FilePath
