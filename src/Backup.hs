@@ -7,10 +7,7 @@ module Main where
 
 import System.Directory
 import System.FilePath
---import Filesystem (getHomeDirectory, createDirectory, isFile, copyFile, writeFile, listDirectory)
---import Filesystem.Path
---import Filesystem.Path.Rules
-import Prelude -- hiding (FilePath, writeFile, readFile)
+import Prelude
 import "mtl" Control.Monad.State
 import Control.Monad.Reader
 
@@ -19,7 +16,6 @@ import Data.Default.Class
 import Data.String
 import Data.Time.Clock.POSIX
 import System.Posix.Files.ByteString hiding (isDirectory)
---import System.Posix.Env.ByteString hiding (getArgs)
 import System.Environment (getArgs)
 import System.Exit
 
@@ -35,14 +31,41 @@ import Console.Display
 
 import Tools.ChronoFs
 
-listDirectory :: FilePath -> IO [FilePath]
-listDirectory dir = toPath <$> getDirectoryContents dir
+listDirectory :: ExcludeQuery -> FilePath -> IO [FilePath]
+listDirectory isExcluded dir = toPath <$> getDirectoryContents dir
   where
     toPath []        = []
     toPath (".":xs)  = toPath xs
     toPath ("..":xs) = toPath xs
-    toPath (x:xs)    = (dir </> x) : toPath xs
+    toPath (x:xs)
+        | isExcluded dir x = toPath xs
+        | otherwise        = (dir </> x) : toPath xs
 
+{-
+data Exclude =
+      ExcludeHome String
+    | ExcludeAbs String
+    deriving (Show,Eq)
+    -}
+
+excludeHome :: [String]
+excludeHome =
+    [".cabal", ".atom", ".shred", ".Trash", ".stack", ".ghc-mod", ".cache", ".gem"
+    , ".npm", ".npm-install", ".z", ".bur", ".local", ".stackage-update", ".haste", ".gitcache", ".docker"
+    ,"cache", "Library", "Downloads", "Movies"]
+
+type ExcludeQuery = FilePath -> String -> Bool
+
+excludeQuery :: FilePath -> ExcludeQuery
+excludeQuery homeDir = \dir ent ->
+    if dir == homeDir
+        then ent `elem` excludeHome
+        else False
+
+noExcludeQuery :: ExcludeQuery
+noExcludeQuery = \_ _ -> False
+
+cmdBackup :: [AllOpt] -> String -> IO ()
 cmdBackup opts backupName = do
     bdir <- getBackupDir opts
     home <- getHomeDirectory
@@ -53,8 +76,9 @@ cmdBackup opts backupName = do
                 , terminal      = term
                 , stats         = def
                 }
+    let isExcluded = excludeQuery home
     initialTime <- getPOSIXTime
-    (ment,finalState) <- runBackup (initCheck >> loop bdir home) bs cfg
+    (ment,finalState) <- runBackup (initCheck >> loop isExcluded bdir home) bs cfg
     finalTime   <- getPOSIXTime
     case ment of
         Nothing  -> putStrLn "no archiving done"
@@ -70,13 +94,13 @@ cmdBackup opts backupName = do
     where
           initCheck = do bdir <- asks backupDir
                          mapM_ (liftIO . createDirectoryIfMissing True) [ bdir, bdir </> "tmp", bdir </> "data", bdir </> "meta", bdir </> "backup" ]
-          loop :: FilePath -> FilePath -> Backup (Maybe Ent)
-          loop skipDir dir
+          loop :: ExcludeQuery -> FilePath -> FilePath -> Backup (Maybe Ent)
+          loop exclude skipDir dir
             | dir == skipDir = return Nothing
             | otherwise      = do
                 verbose2 ("entering " ++ show dir)
-                m <- runIO (listDirectory dir) (return []) (return)
-                allEnts <- catMaybes <$> mapM (processEnt skipDir) m
+                m <- runIO (listDirectory exclude dir) (return []) (return)
+                allEnts <- catMaybes <$> mapM (processEnt exclude skipDir) m
                 !hash <- writeEntAsHash allEnts
                 !fs <- liftIO $ getSymbolicLinkStatus (UTF8.fromString dir)
                 return $ Just $ Ent { entType  = EntDir
@@ -86,10 +110,10 @@ cmdBackup opts backupName = do
                                     , entHash  = ContentHash hash
                                     , entName  = takeFileName dir
                                     }
-          processEnt skipDir ent = do
+          processEnt exclude skipDir ent = do
             fm <- liftIO (either error id <$> getFileMetas ent)
             if fileMetaType fm == Directory
-                then loop skipDir ent
+                then loop exclude skipDir ent
                 else runIO (gatherFileMeta ent) (return Nothing) (processFile ent fm)
           processFile ent fm (ty,hash)
                 | fileMetaType fm == SymbolicLink = doSymlink
@@ -146,13 +170,16 @@ cmdBackup opts backupName = do
 
           verbose2 s = printTerminalLn Green s
 
+cmdList :: [AllOpt] -> IO ()
 cmdList opts = do
     bdir    <- getBackupDir opts
-    backups <- listDirectory (bdir </> "backup")
+    backups <- listDirectory noExcludeQuery (bdir </> "backup")
     mapM_ (putStrLn . takeFileName) backups
 
+cmdListName :: [AllOpt] -> String -> IO ()
 cmdListName = undefined
 
+cmdGetMeta :: [AllOpt] -> String -> IO ()
 cmdGetMeta opts hashName = do
     bdir <- getBackupDir opts
     --runBackupRO (initCheck >> loop (backupDir bs) home) (defaultBackupConfig bdir)
@@ -160,6 +187,7 @@ cmdGetMeta opts hashName = do
         ents <- readMeta_ (either error id $ hashHex hashName)
         liftIO $ mapM_ (printEnt Raw) ents
 
+cmdGet :: [AllOpt] -> String -> IO ()
 cmdGet opts name = do
     bdir <- getBackupDir opts
     flip runBackupRO (defaultBackupConfig bdir) $ do
@@ -169,6 +197,7 @@ cmdGet opts name = do
 
 data EntPrint = Raw | Pretty
 
+printEnt :: EntPrint -> Ent -> IO ()
 printEnt Raw ent = do
     putStrLn ("filename " ++ entName ent)
     case entHash ent of
@@ -190,6 +219,7 @@ printEnt Pretty ent = do
                         EntFile  -> ""
                         EntDir   -> "/"
 
+getRootEnt :: [Ent] -> [FilePath] -> BackupRO (Ent, [Ent])
 getRootEnt es l = doGet es l
     where doGet _    []     = error "no path"
           doGet ents (x:[]) =
@@ -209,6 +239,7 @@ getRootEnt es l = doGet es l
                             ContentLink lnk -> error ("got link: " ++ show lnk)
                             ContentHash h   -> h
 
+cmdShow :: [AllOpt] -> String -> Maybe FilePath -> IO ()
 cmdShow opts name Nothing = do
     bdir <- getBackupDir opts
     flip runBackupRO (defaultBackupConfig bdir) $ do
@@ -227,6 +258,7 @@ cmdShow opts name (Just dir)
                     liftIO $ printEnt Pretty rootEnt
                     liftIO $ mapM_ (printEnt Pretty) children
 
+cmdDu :: [AllOpt] -> t -> FilePath -> IO b
 cmdDu opts _name dir
     | isAbsolute dir = error "source path cannot be absolute"
     | otherwise      = getBackupDir opts >>= runBackupRO doDu . defaultBackupConfig
@@ -235,6 +267,7 @@ cmdDu opts _name dir
                     --ents <- readMeta_ hash
                     error "du is not implemented"
 
+cmdRestore :: [AllOpt] -> String -> FilePath -> FilePath -> IO ()
 cmdRestore opts name rootDir dirTo
     | isAbsolute rootDir = error "source path cannot be absolute"
     | otherwise          = getBackupDir opts >>= runBackupRO doRestore . defaultBackupConfig

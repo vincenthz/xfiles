@@ -18,7 +18,7 @@ import Prelude
 import Data.Word
 import Crypto.Hash
 
-type HashT = SHA512
+type HashT = SHA224
 
 hashSize :: Int
 hashSize = hashDigestSize (undefined :: HashT)
