@@ -27,8 +27,6 @@ Library
                    , Data.Buffer
                    , Data.Sql
                    , System.Directory.Traverse
-                   , Console.Display
-                   , Console.Options
                    , Network.LSP
                    , Storage.HashFS
                    , Storage.HashFS.Client
@@ -57,11 +55,6 @@ Library
                    -- , Tools.Quarry.DB
                    -- , Tools.Quarry.DBHelper
                    -- , Tools.Quarry.Cache
-                   , Console.Options.Nid
-                   , Console.Options.Flags
-                   , Console.Options.Monad
-                   , Console.Options.Types
-                   , Console.Options.Utils
                    , Network.LSP.Types
                    , Network.LSP.Crypto
                    , Network.LSP.Context
@@ -83,6 +76,7 @@ Library
                    , async
                    , memory >= 0.8
                    , network
+                   , cli
                    , cryptonite >= 0.9
                    , mtl
                    , data-default-class
@@ -103,13 +97,13 @@ Library
                    , convertible
                    , HDBC
                    , HDBC-sqlite3
-  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-unused-imports
+  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-unused-imports -Wno-redundant-constraints
   default-language:  Haskell2010
 
 Executable           chronofs
   Main-Is:           Backup.hs
   hs-source-dirs:    src
-  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports
+  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports -Wno-redundant-constraints
   Build-depends:     base >= 4 && < 5
                    , mtl
                    , xfiles
@@ -123,13 +117,14 @@ Executable           chronofs
                    , unix
                    , time
                    , utf8-string
+                   , cli
   Buildable:         True
   default-language:  Haskell2010
 
 Executable           chronofs-shell
   Main-Is:           Shell.hs
   hs-source-dirs:    Src
-  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports
+  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports -Wno-redundant-constraints
   Build-depends:     base, mtl, xfiles, data-default-class, terminfo, system-filepath, time, old-locale, regex-posix
   Buildable:         False
   default-language:  Haskell2010
@@ -137,7 +132,7 @@ Executable           chronofs-shell
 Executable           safe-shred
   Main-Is:           SafeShred.hs
   hs-source-dirs:    src
-  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports
+  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports -Wno-redundant-constraints
   Build-depends:     base >= 4 && < 5
                    , xfiles
                    , cryptonite
@@ -151,7 +146,7 @@ Executable           safe-shred
 Executable           filelock
   Main-Is:           FileLock.hs
   hs-source-dirs:    src
-  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports
+  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports -Wno-redundant-constraints
   Build-depends:     base >= 4 && < 5
                    , xfiles
                    , memory
@@ -167,7 +162,7 @@ Executable           filelock
 Executable           checkexts
   Main-Is:           CheckExtensions.hs
   hs-source-dirs:    src
-  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports
+  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports -Wno-redundant-constraints
   Build-depends:     base >= 4 && < 5
                    , xfiles
                    , filepath
@@ -180,13 +175,14 @@ Executable           xdu
   Main-Is:           Xdu.hs
   Other-Modules:     Paths_xfiles
   hs-source-dirs:    src
-  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports
+  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports -Wno-redundant-constraints
   Build-depends:     base >= 4 && < 5
                    , xfiles
                    , filepath
                    , containers
                    , directory
                    , process
+                   , cli
   Buildable:         True
   default-language:  Haskell2010
 
@@ -216,6 +212,7 @@ Executable           hashfs-cli
                    , network
                    , memory
                    , cryptonite
+                   , cli
                    , bytestring
                    , utf8-string
   Buildable:         True
@@ -229,6 +226,7 @@ Executable           hashfsd
   Build-depends:     base >= 4 && < 5
                    , mtl
                    , xfiles
+                   , async
                    , process
                    , network
                    , hourglass
@@ -301,6 +299,7 @@ Executable           quarry-import
                    , utf8-string
                    , HDBC
                    , HDBC-sqlite3
+                   , cli
   Buildable:         True
   default-language:  Haskell2010
 

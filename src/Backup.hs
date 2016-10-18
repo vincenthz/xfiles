@@ -5,7 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Main where
 
-import System.Directory
+import System.Directory hiding (listDirectory)
 import System.FilePath
 import Prelude
 import "mtl" Control.Monad.State
