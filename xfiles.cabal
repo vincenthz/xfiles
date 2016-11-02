@@ -338,16 +338,3 @@ Test-Suite test-sql
                    , hourglass
                    , xfiles
   ghc-options:       -Wall -fno-warn-orphans -fno-warn-missing-signatures -fwarn-tabs -fno-warn-unused-imports
-
-Test-Suite test-cli
-  type:              exitcode-stdio-1.0
-  hs-source-dirs:    tests
-  Main-is:           Cli.hs
-  default-language:  Haskell2010
-  Build-Depends:     base >= 3 && < 5
-                   , tasty
-                   , directory
-                   , tasty-quickcheck
-                   , QuickCheck
-                   , xfiles
-  ghc-options:       -Wall -fno-warn-orphans -fno-warn-missing-signatures -fwarn-tabs -fno-warn-unused-imports
