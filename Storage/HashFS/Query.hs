@@ -22,6 +22,7 @@ import           Data.Either (partitionEithers)
 import           Data.Char
 import           Data.Sql hiding (Query)
 import qualified Data.Sql as Sql
+import           Data.Stream
 import           Text.Read
 
 data QueryStruct expr =

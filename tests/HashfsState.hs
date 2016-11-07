@@ -43,7 +43,7 @@ newState _ = arbitrary
 
 instance Arbitrary Tag where
     arbitrary =
-        Tag <$> elements [Just Other, Just Person, Just Location, Just Group]
+        Tag <$> elements [Other, Person, Location, Group]
             <*> elements arbitraryTag
 
 forEachDigestsAndData :: HashAlgorithm h => State h -> ((Digest h, (DataInfo, [Tag])) -> IO a) -> IO ()

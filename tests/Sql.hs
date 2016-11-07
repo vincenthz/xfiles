@@ -109,7 +109,7 @@ sqlQueriesWork (SqlFile f) st = do
     -- * renaming tag to something that exist
     () <- do
         let s1 = head $ stateTags st
-            s2 = Tag (Just Group) "bliblabloo"
+            s2 = Tag Group "bliblabloo"
         let expected = stateGetDigestTaggedWith st s1
 
         _ <- metaRenameTag conn s1 s2
@@ -162,11 +162,10 @@ sqlQueriesWork (SqlFile f) st = do
                 ]
         | otherwise = return ()
 
-    tagsToQuery (Tag (Just Person) x)   = "person == " ++ show x
-    tagsToQuery (Tag (Just Location) x) = "location == " ++ show x
-    tagsToQuery (Tag (Just Group) x)    = "group == " ++ show x
-    tagsToQuery (Tag (Just Other) x)    = "tag == " ++ show x
-    tagsToQuery (Tag Nothing x)         = "tag == " ++ show x
+    tagsToQuery (Tag Person x)   = "person == " ++ show x
+    tagsToQuery (Tag Location x) = "location == " ++ show x
+    tagsToQuery (Tag Group x)    = "group == " ++ show x
+    tagsToQuery (Tag Other x)    = "tag == " ++ show x
 
 sqlTests :: [TestTree]
 sqlTests =

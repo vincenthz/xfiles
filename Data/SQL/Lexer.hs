@@ -1,6 +1,7 @@
 -- | Data.SQL.Lexer
 module Data.SQL.Lexer
     ( atomize
+    , Atom(..)
     ) where
 
 import Data.Char
@@ -25,6 +26,7 @@ atomize list@(x:xs)
     | isSpace x    = atomize xs
     | x == ','     = AtomComma : atomize xs
     | x == '"'     = eatString [] xs
+    | x == '\''    = eatSString [] xs
     | x == '('     = AtomLParen : atomize xs
     | x == ')'     = AtomRParen : atomize xs
     | isOperator x = eatConstruct list AtomOperator isOperator
@@ -48,3 +50,10 @@ atomize list@(x:xs)
     eatString acc ('\\':'\\':cs) = eatString ('\\': acc) cs
     eatString acc ('\\':cs)      = eatString ('\\': acc) cs
     eatString acc (c:cs)         = eatString (c : acc) cs
+
+    eatSString acc []             = AtomParseError ("unterminated simple string: " ++ show ('"' : reverse acc)) : []
+    eatSString acc ('\'':cs)      = AtomString (reverse acc) : atomize cs
+    eatSString acc ('\\':'\'':cs) = eatSString ('\'' : acc) cs
+    eatSString acc ('\\':'\\':cs) = eatSString ('\\': acc) cs
+    eatSString acc ('\\':cs)      = eatSString ('\\': acc) cs
+    eatSString acc (c:cs)         = eatSString (c : acc) cs
