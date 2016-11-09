@@ -14,7 +14,7 @@ eatRet predicate = Stream $ \el ->
         x:xs ->
             case predicate x of
                 Just a  -> Right (a, xs)
-                Nothing -> Left ("unexpected atom got: " ++ show x)
+                Nothing -> Left ("unexpected atom got: " ++ show x ++ " next=" ++ show (take 5 xs))
 
 eat :: Show elem => (elem -> Bool) -> Stream elem ()
 eat predicate = Stream $ \el ->
@@ -22,7 +22,7 @@ eat predicate = Stream $ \el ->
         [] -> Left ("empty stream: eating")
         x:xs
             | predicate x -> Right ((), xs)
-            | otherwise   -> Left ("unexpected atom got: " ++ show x)
+            | otherwise   -> Left ("unexpected atom got: " ++ show x ++ " next=" ++ show (take 5 xs))
 
 newtype Stream elem a = Stream { runStream :: [elem] -> Either String (a, [elem]) }
 

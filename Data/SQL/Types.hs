@@ -2,6 +2,7 @@ module Data.SQL.Types
     ( ColumnName(..)
     , FunctionName(..)
     , TableName(..)
+    , AliasName(..)
     , FunctionCall(..)
     , WhereExpr(..)
     , ExprBinOp(..)
@@ -10,21 +11,30 @@ module Data.SQL.Types
     , Value(..)
     , SelectorCol(..)
     , Selector(..)
+    , Select(..)
+    , SelectSource(..)
+    , OrderBy(..)
+    , Order(..)
+    , GroupBy(..)
     , ColumnDecl(..)
     , ColumnType(..)
     , ColumnNumericType(..)
     , ColumnStringType(..)
     , ColumnConstraint(..)
+    , Insert(..)
     , Query(..)
     ) where
 
-newtype ColumnName = ColumnName String
+newtype ColumnName = ColumnName [String]
     deriving (Show,Eq)
 
 newtype FunctionName = FunctionName String
     deriving (Show,Eq)
 
 newtype TableName = TableName String
+    deriving (Show,Eq)
+
+newtype AliasName = AliasName TableName
     deriving (Show,Eq)
 
 data FunctionCall = FunctionCall FunctionName [Value]
@@ -42,8 +52,11 @@ data ExprBinOp =
 data Expr =
       ExprAnd Expr Expr
     | ExprOr Expr Expr
+    | ExprNot Expr
     | ExprLike ColumnName String
     | ExprBin Value ExprBinOp Value
+    | ExprExist Expr
+    | ExprSelect Select
     deriving (Show,Eq)
 
 data ExprOperand =
@@ -51,16 +64,15 @@ data ExprOperand =
     | ExprValue Value
     deriving (Show,Eq)
 
-data Selector =
-      SelectorStar
-    | SelectorCols [SelectorCol]
+data Selector = Selector SelectorCol (Maybe As)
     deriving (Show,Eq)
 
 type As = ColumnName
 
 data SelectorCol =
-      SelectorColName ColumnName (Maybe As)
-    | SelectorColUdf FunctionCall
+      SelectorColName ColumnName
+    | SelectorColUdf FunctionName [SelectorCol]
+    | SelectorColStar
     deriving (Show,Eq)
 
 newtype WhereExpr = WhereExpr Expr
@@ -70,7 +82,8 @@ data Value =
       ValueBool Bool
     | ValueString String
     | ValueInt Integer
-    | ValueVar String
+    | ValueVar [String]
+    | ValueStar
     deriving (Show,Eq)
 
 data ColumnDecl = ColumnDecl ColumnName ColumnType [ColumnConstraint]
@@ -108,8 +121,33 @@ data ColumnConstraint =
     | Constraint_Default
     deriving (Show,Eq)
 
+data Select = SelectQuery [Selector]
+                          [SelectSource]
+                          (Maybe WhereExpr)
+                          (Maybe GroupBy)
+                          (Maybe OrderBy)
+    deriving (Show,Eq)
+
+data Insert = InsertQuery TableName
+                          (Maybe [ColumnName])
+                          [Value]
+    deriving (Show,Eq)
+
+data SelectSource =
+      SourceTable TableName (Maybe AliasName)
+    deriving (Show,Eq)
+
+data GroupBy = GroupBy ColumnName
+    deriving (Show,Eq)
+
+data OrderBy = OrderBy [(ColumnName,Maybe Order)]
+    deriving (Show,Eq)
+
+data Order = Ascendent | Descendent
+    deriving (Show,Eq)
+
 data Query =
-      Select Selector TableName (Maybe WhereExpr)
-    | Insert TableName (Maybe [ColumnName]) [Value]
+      Select Select
+    | Insert Insert
     | Create TableName [ColumnDecl]
     deriving (Show,Eq)

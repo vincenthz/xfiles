@@ -10,6 +10,7 @@ data Atom =
       AtomInt        String
     | AtomFloat      String
     | AtomComma
+    | AtomDot
     | AtomLParen
     | AtomRParen
     | AtomOperator   String
@@ -25,14 +26,16 @@ atomize list@(x:xs)
     | isDigit x    = eatNum list
     | isSpace x    = atomize xs
     | x == ','     = AtomComma : atomize xs
+    | x == '.'     = AtomDot : atomize xs
     | x == '"'     = eatString [] xs
     | x == '\''    = eatSString [] xs
     | x == '('     = AtomLParen : atomize xs
     | x == ')'     = AtomRParen : atomize xs
     | isOperator x = eatConstruct list AtomOperator isOperator
-    | isAlpha x    = eatConstruct list AtomSymbol isAlphaNum
+    | isAlpha x    = eatConstruct list AtomSymbol isSymbolChar
     | otherwise    = AtomError x : atomize xs
   where
+    isSymbolChar c = isAlphaNum c || c == '_'
     isOperator = flip elem "+-/*=!/&|{}<>~"
 
     eatNum l =

@@ -13,17 +13,38 @@ parse :: String -> Either String (Query, [Atom])
 parse = runStream parser . atomize
   where
     parser = do
-        p <-     (symbolIs "SELECT" *> pure select)
+        p <-     (symbolIs "SELECT" *> pure (Select <$> selectQuery))
+             <|> (symbolIs "INSERT" *> pure (Insert <$> insert))
              <|> (symbolIs "CREATE" *> pure create)
-             <|> (symbolIs "INSERT" *> pure insert)
         p
-    select = do
-        selector <- (operatorIs "*" *> pure SelectorStar)
-                <|> (SelectorCols <$> (selCol `sepBy1` isComma))
+    selectKW = (symbolIs "SELECT" *> selectQuery)
+
+    selectQuery = do
+        sel <- selectorAs `sepBy1` isComma
         symbolIs "FROM"
-        table <- tableName
+        sources <- source `sepBy1` isComma
         wh    <- optional whereExpr
-        pure $ Select selector table wh
+        gb    <- optional groupBy
+        ob    <- optional orderBy
+        pure $ SelectQuery sel sources wh gb ob
+
+    selectorAs = do
+        sel <- selectorCol
+        as  <- optional (symbolIs "AS" *> columnName)
+        pure $ Selector sel as
+
+    selectorCol = do
+            (operatorIs "*" *> pure SelectorColStar)
+        <|> do sym <- functionName
+               cs <- parenthesized (selectorCol `sepBy1` isComma)
+               pure (SelectorColUdf sym cs)
+        <|> (SelectorColName <$> columnName)
+
+    source = do
+        table <- tableName
+        alias <- fmap AliasName <$> optional tableName
+        pure $ SourceTable table alias
+
     create = do
         symbolIs "TABLE"
         table <- tableName
@@ -73,9 +94,7 @@ parse = runStream parser . atomize
         mcols <- optional (parenthesized (columnName `sepBy1` isComma))
         symbolIs "VALUES"
         vals <- parenthesized (value `sepBy1` isComma)
-        pure $ Insert table mcols vals
-
-    selCol = columnUdf <|> (SelectorColName <$> columnName <*> optional (symbolIs "AS" *> columnName))
+        pure $ InsertQuery table mcols vals
 
     whereExpr =
         symbolIs "WHERE" *>
@@ -83,16 +102,19 @@ parse = runStream parser . atomize
       where
         parseAnd = do
             o1 <- parseOr
-            operatorIs "&&"
-            o2 <- parseOr
-            return (ExprAnd o1 o2)
+            os <- many (symbolIs "AND" *> parseOr)
+            pure $ foldl ExprAnd o1 os
         parseOr = do
-            e1 <- parseExpr
-            operatorIs "||"
-            e2 <- parseExpr
-            return (ExprOr e1 e2)
+            e1 <- parseNotExpr
+            es <- many (symbolIs "OR" *> parseNotExpr)
+            pure $ foldl ExprOr e1 es
+        parseNotExpr = do
+                (ExprNot <$> (symbolIs "NOT" *> parseExpr))
+            <|> parseExpr
         parseExpr =
-                parenthesized parseAnd
+                parenthesized (ExprSelect <$> selectKW)
+            <|> parenthesized parseAnd
+            <|> (ExprExist <$> (symbolIs "exists" *> parseExpr))
             <|> (ExprBin <$> operand <*> operator <*> operand)
             <|> do c <- columnName
                    symbolIs "LIKE"
@@ -108,10 +130,20 @@ parse = runStream parser . atomize
                <|> (operatorIs ">"  *> pure ExprGT)
                <|> (operatorIs "<"  *> pure ExprLT)
 
+    groupBy = do
+        symbolIs "GROUP" *> symbolIs "BY"
+        col <- columnName
+        pure $ GroupBy col
+    orderBy = do
+        symbolIs "ORDER" *> symbolIs "BY"
+        OrderBy <$> (colOrder `sepBy1` isComma)
+    colOrder = do
+        c <- columnName
+        o <- optional (symbolIs "DESC" *> pure Descendent)
+        return (c, o)
+
     functionCall = FunctionCall <$> functionName
                                 <*> parenthesized (value `sepBy` isComma)
-
-    columnUdf = SelectorColUdf <$> functionCall
 
 downSize :: Integer -> Int
 downSize n
@@ -119,12 +151,13 @@ downSize n
     | otherwise                       = fromIntegral n
 
 value :: Stream Atom Value
-value = eatRet $ \a ->
-    case a of
-        AtomString s -> Just $ ValueString s
-        AtomInt s    -> Just $ ValueInt (read s)
-        AtomSymbol s -> Just $ ValueVar s
-        _            -> Nothing
+value =
+        eatRet simpleValue
+    <|> (ValueVar <$> (eatRet getSymbolNotKW `sepBy` isDot))
+  where
+    simpleValue (AtomString s) = Just $ ValueString s
+    simpleValue (AtomInt s)    = Just $ ValueInt (read s)
+    simpleValue _              = Nothing
 
 eqCI :: String -> String -> Bool
 eqCI a b = map toLower a == map toLower b
@@ -133,18 +166,29 @@ eatAtom :: (Show a, Eq a) => a -> Stream a ()
 eatAtom a = eat ((==) a)
 
 functionName :: Stream Atom FunctionName
-functionName = FunctionName <$> eatRet getSymbol
+functionName = FunctionName <$> eatRet getSymbolNotKW
 
 tableName :: Stream Atom TableName
-tableName = TableName <$> eatRet getSymbol
+tableName = TableName <$> eatRet getSymbolNotKW
 
 columnName :: Stream Atom ColumnName
-columnName = ColumnName <$> eatRet getSymbol
+columnName = ColumnName <$> (eatRet getSymbolNotKW `sepBy` isDot)
 
 symbolIs :: String -> Stream Atom ()
 symbolIs s = eat (maybe False (eqCI s) . getSymbol)
+
 operatorIs :: String -> Stream Atom ()
-operatorIs s = eat (maybe False (eqCI   s) . getOperator)
+operatorIs s = eat (maybe False (eqCI s) . getOperator)
+
+getSymbolNotKW :: Atom -> Maybe String
+getSymbolNotKW (AtomSymbol a)
+    | isKW a    = Nothing
+    | otherwise = Just a
+getSymbolNotKW _ = Nothing
+
+isKW :: String -> Bool
+isKW (map toUpper -> l) =
+    elem l ["WHERE", "SELECT", "INSERT", "CREATE"]
 
 getSymbol :: Atom -> Maybe String
 getSymbol (AtomSymbol a) = Just a
@@ -163,6 +207,9 @@ parenthesized = between (eatAtom AtomLParen) (eatAtom AtomRParen)
 
 isComma :: Stream Atom ()
 isComma = eat (== AtomComma)
+
+isDot :: Stream Atom ()
+isDot = eat (== AtomDot)
 
 -- generic combinator stuff
 
