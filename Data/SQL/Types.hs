@@ -24,6 +24,8 @@ module Data.SQL.Types
     , Insert(..)
     , Create(..)
     , Query(..)
+    , Drop(..)
+    , IfNotExist(..)
     ) where
 
 newtype ColumnName = ColumnName [String]
@@ -146,11 +148,18 @@ data OrderBy = OrderBy [(ColumnName,Maybe Order)]
 data Order = Ascendent | Descendent
     deriving (Show,Eq)
 
-data Create = CreateQuery TableName [ColumnDecl]
+data Create = CreateQuery (Maybe IfNotExist) TableName [ColumnDecl]
+    deriving (Show,Eq)
+
+data Drop = DropTable (Maybe IfNotExist) TableName
+    deriving (Show,Eq)
+
+data IfNotExist = IfNotExist
     deriving (Show,Eq)
 
 data Query =
       Select Select
     | Insert Insert
     | Create Create
+    | Drop Drop
     deriving (Show,Eq)

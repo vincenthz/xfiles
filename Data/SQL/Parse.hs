@@ -16,6 +16,7 @@ parse = runStream parser . atomize
         p <-     (symbolIs "SELECT" *> pure (Select <$> selectQuery))
              <|> (symbolIs "INSERT" *> pure (Insert <$> insert))
              <|> (symbolIs "CREATE" *> pure (Create <$> create))
+             <|> (symbolIs "DROP" *> pure (Drop <$> drop))
         p
     selectKW = (symbolIs "SELECT" *> selectQuery)
 
@@ -45,11 +46,18 @@ parse = runStream parser . atomize
         alias <- optional tableName
         pure $ SourceTable table alias
 
+    drop = do
+        symbolIs "TABLE"
+        ine <- optional ifNotExist
+        table <- tableName
+        pure $ DropTable ine table
+
     create = do
         symbolIs "TABLE"
+        ine <- optional ifNotExist
         table <- tableName
         cols  <- parenthesized (columnDecl `sepBy1` isComma)
-        pure $ CreateQuery table cols
+        pure $ CreateQuery ine table cols
       where
         columnDecl = ColumnDecl <$> columnName <*> columnType <*> columnConstraint
         columnType =
@@ -95,6 +103,8 @@ parse = runStream parser . atomize
         symbolIs "VALUES"
         vals <- parenthesized (value `sepBy1` isComma)
         pure $ InsertQuery table mcols vals
+
+    ifNotExist = symbolIs "IF" *> symbolIs "NOT" *> symbolIs "EXIST" *> pure IfNotExist
 
     whereExpr =
         symbolIs "WHERE" *>

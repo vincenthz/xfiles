@@ -10,6 +10,11 @@ pretty :: Query -> String
 pretty (Select s) = printSelect s
 pretty (Insert t) = printInsert t
 pretty (Create c) = printCreate c
+pretty (Drop c) = printDrop c
+
+printDrop :: Drop -> String
+printDrop (DropTable ife tn) =
+    "DROP TABLE " <> printIfe ife <> printTName tn
 
 printSelect :: Select -> String
 printSelect (SelectQuery sels sources mwhere mgroup morder) = unwords
@@ -60,8 +65,8 @@ printInsert (InsertQuery tn mcols mvals) = unwords
     )
 
 printCreate :: Create -> String
-printCreate (CreateQuery (TableName tn) decls) =
-    "CREATE TABLE " <> tn <> " (" <> cols <> ")"
+printCreate (CreateQuery ife (TableName tn) decls) =
+    "CREATE TABLE " <> printIfe ife <> tn <> " (" <> cols <> ")"
   where
     cols = commaPrint  $ map printDecl decls
 
@@ -90,6 +95,10 @@ printCreate (CreateQuery (TableName tn) decls) =
     printConstraint Constraint_PrimaryKey = "PRIMARY KEY"
     printConstraint Constraint_ForeignKey = "FOREIGN KEY"
     printConstraint Constraint_Default    = "DEFAULT"
+
+printIfe :: Maybe IfNotExist -> String
+printIfe Nothing = ""
+printIfe (Just IfNotExist) = "IF NOT EXIST "
 
 printCName :: ColumnName -> String
 printCName (ColumnName [v]) = v
