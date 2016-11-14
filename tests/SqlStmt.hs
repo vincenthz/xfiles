@@ -3,12 +3,17 @@ module Main
     ) where
 
 import Data.SQL.Parse
+import Data.SQL.Print
 import System.Environment
 
 pparse :: String -> IO ()
-pparse str =
+pparse str = do
+    putStrLn "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
     case parse str of
-        Right (s, [])      -> putStrLn ("SUCCESS: " ++ show s)
+        Right (s, [])      -> do
+            putStrLn ("SUCCESS: " ++ str)
+            putStrLn ("SUCCESS: " ++ show s)
+            putStrLn ("PRETTY: " ++ pretty s)
         Right (s, e@(_:_)) -> putStrLn ("REMAINING: " ++ show s ++ " => " ++ show e)
         Left err           -> putStrLn ("ERROR: " ++ show err)
 

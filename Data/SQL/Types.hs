@@ -2,7 +2,7 @@ module Data.SQL.Types
     ( ColumnName(..)
     , FunctionName(..)
     , TableName(..)
-    , AliasName(..)
+    , AliasName
     , FunctionCall(..)
     , WhereExpr(..)
     , ExprBinOp(..)
@@ -22,6 +22,7 @@ module Data.SQL.Types
     , ColumnStringType(..)
     , ColumnConstraint(..)
     , Insert(..)
+    , Create(..)
     , Query(..)
     ) where
 
@@ -34,8 +35,7 @@ newtype FunctionName = FunctionName String
 newtype TableName = TableName String
     deriving (Show,Eq)
 
-newtype AliasName = AliasName TableName
-    deriving (Show,Eq)
+type AliasName = TableName
 
 data FunctionCall = FunctionCall FunctionName [Value]
     deriving (Show,Eq)
@@ -146,8 +146,11 @@ data OrderBy = OrderBy [(ColumnName,Maybe Order)]
 data Order = Ascendent | Descendent
     deriving (Show,Eq)
 
+data Create = CreateQuery TableName [ColumnDecl]
+    deriving (Show,Eq)
+
 data Query =
       Select Select
     | Insert Insert
-    | Create TableName [ColumnDecl]
+    | Create Create
     deriving (Show,Eq)

@@ -28,6 +28,7 @@ Library
                    , Data.Sql
                    , Data.SQL.Parse
                    , Data.SQL.Types
+                   , Data.SQL.Print
                    , Data.Stream
                    , System.Directory.Traverse
                    , Network.LSP

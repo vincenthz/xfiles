@@ -15,7 +15,7 @@ parse = runStream parser . atomize
     parser = do
         p <-     (symbolIs "SELECT" *> pure (Select <$> selectQuery))
              <|> (symbolIs "INSERT" *> pure (Insert <$> insert))
-             <|> (symbolIs "CREATE" *> pure create)
+             <|> (symbolIs "CREATE" *> pure (Create <$> create))
         p
     selectKW = (symbolIs "SELECT" *> selectQuery)
 
@@ -42,14 +42,14 @@ parse = runStream parser . atomize
 
     source = do
         table <- tableName
-        alias <- fmap AliasName <$> optional tableName
+        alias <- optional tableName
         pure $ SourceTable table alias
 
     create = do
         symbolIs "TABLE"
         table <- tableName
         cols  <- parenthesized (columnDecl `sepBy1` isComma)
-        pure $ Create table cols
+        pure $ CreateQuery table cols
       where
         columnDecl = ColumnDecl <$> columnName <*> columnType <*> columnConstraint
         columnType =
