@@ -5,6 +5,8 @@ module Data.SQL.Print
 import Data.SQL.Types
 import Data.Monoid
 import Data.List
+import qualified Data.ByteString.Char8 as BC
+import qualified Data.ByteArray.Encoding as B
 
 pretty :: Query -> String
 pretty (Select s) = printSelect s
@@ -89,12 +91,16 @@ printCreate (CreateQuery ife (TableName tn) decls) =
     printType (ColumnDate) = "DATE"
     printType (ColumnDateTime) = "DATETIME"
     printType (ColumnTime) = "TIME"
+    printType (ColumnFunctionUnknown f params) = f <> "(" <> commaPrint (map printValue params) <> ")"
+    printType (ColumnUnknown s) = s
 
     printConstraint Constraint_NotNull    = "NOT NULL"
     printConstraint Constraint_Unique     = "UNIQUE"
     printConstraint Constraint_PrimaryKey = "PRIMARY KEY"
-    printConstraint Constraint_ForeignKey = "FOREIGN KEY"
+    printConstraint (Constraint_ForeignKey k) = "FOREIGN KEY " <> printCName k
     printConstraint Constraint_Default    = "DEFAULT"
+    printConstraint (Constraint_UnknownFunction f p) = f <> "(" <> commaPrint p <>  ")"
+    printConstraint (Constraint_Unknown s) = s
 
 printIfe :: Maybe IfNotExist -> String
 printIfe Nothing = ""
@@ -128,6 +134,7 @@ printValue (ValueString s) = printString s
 printValue (ValueInt i) = show i
 printValue (ValueVar v) = intercalate "." v
 printValue (ValueStar) = "*"
+printValue (ValueBytea bs) = "E\'\\x" ++ BC.unpack (B.convertToBase B.Base16 bs) ++ "\'"
 
 printString :: String -> String
 printString s = "'" ++ s ++ "'"

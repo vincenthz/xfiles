@@ -28,6 +28,8 @@ module Data.SQL.Types
     , IfNotExist(..)
     ) where
 
+import Data.ByteString (ByteString)
+
 newtype ColumnName = ColumnName [String]
     deriving (Show,Eq)
 
@@ -84,6 +86,7 @@ data Value =
       ValueBool Bool
     | ValueString String
     | ValueInt Integer
+    | ValueBytea ByteString
     | ValueVar [String]
     | ValueStar
     deriving (Show,Eq)
@@ -98,6 +101,8 @@ data ColumnType =
     | ColumnDate
     | ColumnTime
     | ColumnDateTime
+    | ColumnFunctionUnknown String [Value]
+    | ColumnUnknown String
     deriving (Show,Eq)
 
 data ColumnNumericType =
@@ -119,8 +124,10 @@ data ColumnConstraint =
       Constraint_NotNull
     | Constraint_Unique
     | Constraint_PrimaryKey
-    | Constraint_ForeignKey
+    | Constraint_ForeignKey ColumnName
     | Constraint_Default
+    | Constraint_UnknownFunction String [String]
+    | Constraint_Unknown String
     deriving (Show,Eq)
 
 data Select = SelectQuery [Selector]

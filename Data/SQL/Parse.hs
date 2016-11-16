@@ -9,14 +9,16 @@ import Data.SQL.Types
 import Data.Stream
 import Data.Char
 
-parse :: String -> Either String (Query, [Atom])
-parse = runStream parser . atomize
+parse :: String -> Either String ([Query], [Atom])
+parse = runStream queries . atomize
   where
+    semi = eat (== AtomSemiColon)
+    queries = (parser `sepBy` semi) <* many semi
     parser = do
         p <-     (symbolIs "SELECT" *> pure (Select <$> selectQuery))
              <|> (symbolIs "INSERT" *> pure (Insert <$> insert))
              <|> (symbolIs "CREATE" *> pure (Create <$> create))
-             <|> (symbolIs "DROP" *> pure (Drop <$> drop))
+             <|> (symbolIs "DROP" *> pure (Drop <$> pDrop))
         p
     selectKW = (symbolIs "SELECT" *> selectQuery)
 
@@ -46,7 +48,7 @@ parse = runStream parser . atomize
         alias <- optional tableName
         pure $ SourceTable table alias
 
-    drop = do
+    pDrop = do
         symbolIs "TABLE"
         ine <- optional ifNotExist
         table <- tableName
@@ -65,10 +67,18 @@ parse = runStream parser . atomize
             <|> (toSimpleType <$> eatRet getSymbol)
         columnConstraint = many constr
           where constr = (symbolIs "PRIMARY" *> symbolIs "KEY" *> pure Constraint_PrimaryKey)
-                     <|> (symbolIs "FOREIGN" *> symbolIs "KEY" *> pure Constraint_ForeignKey)
+                     <|> (symbolIs "FOREIGN" *> symbolIs "KEY" *> (Constraint_ForeignKey <$> columnName))
                      <|> (symbolIs "UNIQUE" *> pure Constraint_Unique)
                      <|> (symbolIs "NOT" *> symbolIs "NULL" *> pure Constraint_NotNull)
                      <|> (symbolIs "DEFAULT" *> symbolIs "NULL" *> pure Constraint_Default)
+                     <|> constraintFunction
+                     <|> constraintOther
+                constraintFunction = do
+                    s <- eatRet getSymbol
+                    params <- parenthesized (eatRet getSymbol `sepBy1` isComma)
+                    return $ Constraint_UnknownFunction s params
+                constraintOther =
+                    Constraint_Unknown <$> eatRet getSymbol
 
         toParamType :: FunctionCall -> ColumnType
         toParamType (FunctionCall (FunctionName (map toUpper -> fname)) params) =
@@ -86,7 +96,7 @@ parse = runStream parser . atomize
                         [ValueInt n] -> ColumnNumeric $ CNum_Decimal (downSize n) 0
                         [ValueInt n, ValueInt n2] -> ColumnNumeric $ CNum_Decimal (downSize n) (downSize n2)
                         _            -> error ("unknown parameters to types : " ++ fname ++ " " ++ show params)
-                _ -> error ("unknown function type: " ++ fname ++ " " ++ show params)
+                _ -> ColumnFunctionUnknown fname params
 
         toSimpleType :: String -> ColumnType
         toSimpleType (map toUpper -> simpleType) =
@@ -94,7 +104,7 @@ parse = runStream parser . atomize
                 "SMALLINT" -> ColumnNumeric CNum_Int16
                 "INT"      -> ColumnNumeric CNum_Int32
                 "BIGINT"   -> ColumnNumeric CNum_Int64
-                _          -> error ("unknown simple type: " ++ simpleType)
+                _          -> ColumnUnknown simpleType
 
     insert = do
         symbolIs "INTO"
@@ -167,6 +177,7 @@ value =
   where
     simpleValue (AtomString s) = Just $ ValueString s
     simpleValue (AtomInt s)    = Just $ ValueInt (read s)
+    simpleValue (AtomBytea s)  = Just $ ValueBytea s
     simpleValue _              = Nothing
 
 eqCI :: String -> String -> Bool
