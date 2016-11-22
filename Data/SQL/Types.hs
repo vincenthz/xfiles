@@ -41,7 +41,10 @@ newtype ColumnName = ColumnName String
 data QualifiedColumnName = QualifiedColumnName TableName ColumnName
     deriving (Show,Eq)
 
-data MQColumnName = MQColumnName (Maybe TableName) ColumnName
+data MQColumnName = MQColumnName
+    { mqQualifier  :: Maybe TableName
+    , mqColumnName :: ColumnName
+    }
     deriving (Show,Eq)
 
 instance IsString MQColumnName where
@@ -138,7 +141,7 @@ data Selector = Selector SelectorCol (Maybe As)
 data SelectorCol =
       SelectorColName MQColumnName
     | SelectorColUdf FunctionName [SelectorCol]
-    | SelectorColStar
+    | SelectorColStar (Maybe TableName)
     deriving (Show,Eq)
 
 newtype WhereExpr = WhereExpr Expr

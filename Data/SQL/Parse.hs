@@ -38,10 +38,9 @@ parse = runStream queries . atomize
         pure $ Selector sel as
 
     selectorCol = do
-            (operatorIs "*" *> pure SelectorColStar)
-        <|> do sym <- functionName
-               cs <- parenthesized (selectorCol `sepBy1` isComma)
-               pure (SelectorColUdf sym cs)
+            (SelectorColStar Nothing <$ operatorIs "*")
+        <|> (SelectorColStar . Just <$> (tableName <* isDot <* operatorIs "*"))
+        <|> (SelectorColUdf <$> functionName <*> (parenthesized (selectorCol `sepBy1` isComma)))
         <|> (SelectorColName <$> mqColumnName)
 
     source = do

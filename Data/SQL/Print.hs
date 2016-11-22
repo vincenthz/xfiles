@@ -46,7 +46,8 @@ printSelect (SelectQuery sels sources mwhere mgroup morder) = unwords
     printSelector (Selector scol mas) =
         printSelectorCol scol ++
         pMaybeStart " AS" printCName mas
-    printSelectorCol SelectorColStar = "*"
+    printSelectorCol (SelectorColStar Nothing) = "*"
+    printSelectorCol (SelectorColStar (Just tn)) = printTName tn ++ "." ++ "*"
     printSelectorCol (SelectorColName cname) = printMQCName cname
     printSelectorCol (SelectorColUdf (FunctionName fname) scols) =
         fname ++ parens (intercalate "," (map printSelectorCol scols))
