@@ -38,6 +38,8 @@ mainX = do
     pparse "INSERT INTO x (a,b,c) VALUES (12, 43, 'x')"
     pparse "INSERT INTO x VALUES ('a', E'\\x4a 2e 43 2e 52 2e 20 4c 69 63 6b 6c 69 64 65 72', 12418249)"
 
+    pparse "UPDATE Customers SET ContactName='Alfred Schmidt', City='Hamburg' WHERE ContactName='x'"
+
     pparse "CREATE TABLE y (a INT PRIMARY KEY, b VARCHAR(20) NOT NULL, c NUMERIC(3) UNIQUE)"
 
 main = do

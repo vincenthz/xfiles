@@ -13,10 +13,20 @@ pretty (Select s) = printSelect s
 pretty (Insert t) = printInsert t
 pretty (Create c) = printCreate c
 pretty (Drop c) = printDrop c
+pretty (Update c) = printUpdate c
 
 printDrop :: Drop -> String
 printDrop (DropTable ife tn) =
     "DROP TABLE " <> printIfe ife <> printTName tn
+
+printUpdate :: Update -> String
+printUpdate (UpdateQuery tn cvals mwhere) = unwords
+    (["UPDATE", printTName tn, "SET"]
+     ++ [commaPrint (map printCVal cvals)]
+     ++ lMaybe mwhere (\(WhereExpr w) -> ["WHERE", printExpr w])
+    )
+  where
+    printCVal (cn, val) = printCName cn ++ "=" ++ printValue val
 
 printSelect :: Select -> String
 printSelect (SelectQuery sels sources mwhere mgroup morder) = unwords
@@ -24,40 +34,25 @@ printSelect (SelectQuery sels sources mwhere mgroup morder) = unwords
      ,"FROM", (commaPrint $ map printSources sources)
      ]
      ++ lMaybe mwhere (\(WhereExpr w) -> ["WHERE", printExpr w])
-     ++ lMaybe mgroup (\(GroupBy cn) -> ["GROUP", "BY", printCName cn])
+     ++ lMaybe mgroup (\(GroupBy cn) -> ["GROUP", "BY", printMQCName cn])
      ++ lMaybe morder (\(OrderBy ods) -> ["ORDER", "BY" ] ++ [commaPrint (map printOCol ods)])
      ++ []
     )
   where
-    printOCol (cn, Nothing) = printCName cn
-    printOCol (cn, (Just Ascendent)) = printCName cn
-    printOCol (cn, (Just Descendent)) = printCName cn ++ " desc"
+    printOCol (cn, Nothing) = printMQCName cn
+    printOCol (cn, (Just Ascendent)) = printMQCName cn
+    printOCol (cn, (Just Descendent)) = printMQCName cn ++ " desc"
 
     printSelector (Selector scol mas) =
         printSelectorCol scol ++
         pMaybeStart " AS" printCName mas
     printSelectorCol SelectorColStar = "*"
-    printSelectorCol (SelectorColName cname) = printCName cname
+    printSelectorCol (SelectorColName cname) = printMQCName cname
     printSelectorCol (SelectorColUdf (FunctionName fname) scols) =
         fname ++ parens (intercalate "," (map printSelectorCol scols))
 
     printSources (SourceTable tn mas) =
         printTName tn ++ maybe "" (\x -> " " ++ printTName x) mas
-
-    printExpr (ExprAnd e1 e2) = printExpr e1 ++ " AND " ++ printExpr e2
-    printExpr (ExprOr e1 e2) = printExpr e1 ++ " OR " ++ printExpr e2
-    printExpr (ExprNot e1) = "NOT " ++ printExpr e1
-    printExpr (ExprLike cname s) = printCName cname ++ " LIKE " ++ printString s
-    printExpr (ExprBin v1 op v2) = printValue v1 ++ " " ++ printOp op ++ " " ++ printValue v2
-    printExpr (ExprExist e) = "EXIST " ++ parens (printExpr e)
-    printExpr (ExprSelect s) = printSelect s
-
-    printOp ExprEQ = "="
-    printOp ExprNE = "<>"
-    printOp ExprGE = ">="
-    printOp ExprLE = "<="
-    printOp ExprGT = ">"
-    printOp ExprLT = "<"
 
 printInsert :: Insert -> String
 printInsert (InsertQuery tn mcols mvals) = unwords
@@ -97,21 +92,48 @@ printCreate (CreateQuery ife (TableName tn) decls) =
     printConstraint Constraint_NotNull    = "NOT NULL"
     printConstraint Constraint_Unique     = "UNIQUE"
     printConstraint Constraint_PrimaryKey = "PRIMARY KEY"
-    printConstraint (Constraint_ForeignKey k) = "FOREIGN KEY " <> printCName k
+    printConstraint (Constraint_ForeignKey k) = "FOREIGN KEY " <> printQualifiedCName k
     printConstraint Constraint_Default    = "DEFAULT"
     printConstraint (Constraint_UnknownFunction f p) = f <> "(" <> commaPrint p <>  ")"
     printConstraint (Constraint_Unknown s) = s
+
+printExpr :: Expr -> String
+printExpr (ExprAnd e1 e2) = printExpr e1 ++ " AND " ++ printExpr e2
+printExpr (ExprOr e1 e2) = printExpr e1 ++ " OR " ++ printExpr e2
+printExpr (ExprNot e1) = "NOT " ++ printExpr e1
+printExpr (ExprLike cname s) = printMQCName cname ++ " LIKE " ++ printString s
+printExpr (ExprBin v1 op v2) = printOperand v1 ++ " " ++ printOp op ++ " " ++ printOperand v2
+printExpr (ExprExist e) = "EXIST " ++ parens (printExpr e)
+printExpr (ExprSelect s) = printSelect s
+
+printOperand :: ExprOperand -> String
+printOperand (ExprCol c) = printMQCName c
+printOperand (ExprValue v) = printValue v
+
+printOp :: ExprBinOp -> String
+printOp ExprEQ = "="
+printOp ExprNE = "<>"
+printOp ExprGE = ">="
+printOp ExprLE = "<="
+printOp ExprGT = ">"
+printOp ExprLT = "<"
 
 printIfe :: Maybe IfNotExist -> String
 printIfe Nothing = ""
 printIfe (Just IfNotExist) = "IF NOT EXIST "
 
+printMQCName :: MQColumnName -> String
+printMQCName (MQColumnName (Just t) v) = printTName t ++ "." ++ printCName v
+printMQCName (MQColumnName Nothing v) = printCName v
+
+printQualifiedCName :: QualifiedColumnName -> String
+printQualifiedCName (QualifiedColumnName tn cn) = printTName tn ++ "." ++ printCName cn
+
 printCName :: ColumnName -> String
-printCName (ColumnName [v]) = v
-printCName (ColumnName l)   = intercalate "." l
+printCName (ColumnName c) = c
 
 printTName :: TableName -> String
-printTName (TableName t)   = t
+printTName (TableName t) = t
 
 commaPrint :: [String] -> String
 commaPrint = intercalate ", "
