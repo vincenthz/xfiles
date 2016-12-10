@@ -41,6 +41,8 @@ mainX = do
     pparse "UPDATE Customers SET ContactName='Alfred Schmidt', City='Hamburg' WHERE ContactName='x'"
 
     pparse "CREATE TABLE y (a INT PRIMARY KEY, b VARCHAR(20) NOT NULL, c NUMERIC(3) UNIQUE)"
+    pparse "CREATE TABLE y (a INT PRIMARY KEY, b VARCHAR(20) FOREIGN KEY a.d EXTRA, c NUMERIC(3) UNIQUE)"
+
 
 main = do
     args <- getArgs

@@ -41,7 +41,7 @@ parse = runStream queries . atomize
             (SelectorColStar Nothing <$ operatorIs "*")
         <|> (SelectorColStar . Just <$> (tableName <* isDot <* operatorIs "*"))
         <|> (SelectorColUdf <$> functionName <*> (parenthesized (selectorCol `sepBy1` isComma)))
-        <|> (SelectorColName <$> mqColumnName)
+        <|> (SelectorColName <$> pMQColumnName)
 
     source = do
         table <- tableName
@@ -50,7 +50,7 @@ parse = runStream queries . atomize
 
     pDrop = do
         symbolIs "TABLE"
-        ine <- optional ifNotExist
+        ine <- optional ifExist
         table <- tableName
         pure $ DropTable ine table
 
@@ -80,7 +80,8 @@ parse = runStream queries . atomize
             <|> (toSimpleType <$> eatRet getSymbol)
         columnConstraint = many constr
           where constr = (symbolIs "PRIMARY" *> symbolIs "KEY" *> pure Constraint_PrimaryKey)
-                     <|> (symbolIs "FOREIGN" *> symbolIs "KEY" *> (Constraint_ForeignKey <$> qColumnName))
+                     <|> (symbolIs "FOREIGN" *> symbolIs "KEY" *> (Constraint_References <$> qColumnName))
+                     <|> (symbolIs "REFERENCES" *> (Constraint_References <$> (QualifiedColumnName <$> tableName <*> parenthesized columnName)))
                      <|> (symbolIs "UNIQUE" *> pure Constraint_Unique)
                      <|> (symbolIs "NOT" *> symbolIs "NULL" *> pure Constraint_NotNull)
                      <|> (symbolIs "DEFAULT" *> symbolIs "NULL" *> pure Constraint_Default)
@@ -127,7 +128,8 @@ parse = runStream queries . atomize
         vals <- parenthesized (value `sepBy1` isComma)
         pure $ InsertQuery table mcols vals
 
-    ifNotExist = symbolIs "IF" *> symbolIs "NOT" *> symbolIs "EXIST" *> pure IfNotExist
+    ifNotExist = symbolIs "IF" *> symbolIs "NOT" *> symbolIs "EXISTS" *> pure IfNotExist
+    ifExist = symbolIs "IF" *> symbolIs "EXISTS" *> pure IfExist
 
     whereExpr =
         symbolIs "WHERE" *>
@@ -149,13 +151,13 @@ parse = runStream queries . atomize
             <|> parenthesized parseAnd
             <|> (ExprExist <$> (symbolIs "exists" *> parseExpr))
             <|> (ExprBin <$> operand <*> operator <*> operand)
-            <|> do c <- mqColumnName
+            <|> do c <- pMQColumnName
                    symbolIs "LIKE"
                    pat <- eatRet getString
                    return (ExprLike c pat)
 
         operand =
-                (ExprCol <$> mqColumnName)
+                (ExprCol <$> pMQColumnName)
             <|> (ExprValue <$> value)
 
         operator = (operatorIs "="  *> pure ExprEQ)
@@ -167,13 +169,13 @@ parse = runStream queries . atomize
 
     groupBy = do
         symbolIs "GROUP" *> symbolIs "BY"
-        col <- mqColumnName
+        col <- pMQColumnName
         pure $ GroupBy col
     orderBy = do
         symbolIs "ORDER" *> symbolIs "BY"
         OrderBy <$> (colOrder `sepBy1` isComma)
     colOrder = do
-        c <- mqColumnName
+        c <- pMQColumnName
         o <- optional (symbolIs "DESC" *> pure Descendent)
         return (c, o)
 
@@ -207,13 +209,13 @@ functionName = FunctionName <$> eatRet getSymbolNotKW
 tableName :: Stream Atom TableName
 tableName = TableName <$> eatRet getSymbolNotKW
 
-mqColumnName :: Stream Atom MQColumnName
-mqColumnName =
+pMQColumnName :: Stream Atom MQColumnName
+pMQColumnName =
         ((,) <$> tableName <*> (isDot *> columnName)) >>= \(tn, cn) -> pure (MQColumnName (Just tn) cn)
     <|> (MQColumnName Nothing <$> columnName)
 
 qColumnName :: Stream Atom QualifiedColumnName
-qColumnName = QualifiedColumnName <$> tableName <*> columnName
+qColumnName = QualifiedColumnName <$> tableName <*> (isDot *> columnName)
 
 columnName :: Stream Atom ColumnName
 columnName = ColumnName <$> (eatRet getSymbolNotKW)
@@ -232,7 +234,7 @@ getSymbolNotKW _ = Nothing
 
 isKW :: String -> Bool
 isKW (map toUpper -> l) =
-    elem l ["WHERE", "SELECT", "INSERT", "CREATE"]
+    elem l ["WHERE", "SELECT", "INSERT", "CREATE", "UPDATE"]
 
 getSymbol :: Atom -> Maybe String
 getSymbol (AtomSymbol a) = Just a

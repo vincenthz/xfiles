@@ -64,7 +64,7 @@ printInsert (InsertQuery tn mcols mvals) = unwords
 
 printCreate :: Create -> String
 printCreate (CreateQuery ife (TableName tn) decls) =
-    "CREATE TABLE " <> printIfe ife <> tn <> " (" <> cols <> ")"
+    "CREATE TABLE " <> printIfne ife <> tn <> " (" <> cols <> ")"
   where
     cols = commaPrint  $ map printDecl decls
 
@@ -93,7 +93,8 @@ printCreate (CreateQuery ife (TableName tn) decls) =
     printConstraint Constraint_NotNull    = "NOT NULL"
     printConstraint Constraint_Unique     = "UNIQUE"
     printConstraint Constraint_PrimaryKey = "PRIMARY KEY"
-    printConstraint (Constraint_ForeignKey k) = "FOREIGN KEY " <> printQualifiedCName k
+    printConstraint (Constraint_References (QualifiedColumnName ftn fcn)) =
+        "REFERENCES " <> printTName ftn <> "(" <> printCName fcn <> ")"
     printConstraint Constraint_Default    = "DEFAULT"
     printConstraint (Constraint_UnknownFunction f p) = f <> "(" <> commaPrint p <>  ")"
     printConstraint (Constraint_Unknown s) = s
@@ -119,9 +120,13 @@ printOp ExprLE = "<="
 printOp ExprGT = ">"
 printOp ExprLT = "<"
 
-printIfe :: Maybe IfNotExist -> String
+printIfne :: Maybe IfNotExist -> String
+printIfne Nothing = ""
+printIfne (Just IfNotExist) = "IF NOT EXISTS "
+
+printIfe :: Maybe IfExist -> String
 printIfe Nothing = ""
-printIfe (Just IfNotExist) = "IF NOT EXIST "
+printIfe (Just IfExist) = "IF EXISTS "
 
 printMQCName :: MQColumnName -> String
 printMQCName (MQColumnName (Just t) v) = printTName t ++ "." ++ printCName v

@@ -30,6 +30,7 @@ module Data.SQL.Types
     , Update(..)
     , Drop(..)
     , IfNotExist(..)
+    , IfExist(..)
     ) where
 
 import Data.ByteString (ByteString)
@@ -100,8 +101,12 @@ data SelectSource =
       SourceTable TableName (Maybe AliasName)
     deriving (Show,Eq)
 
--- | IF NOT EXIST qualifier for DROP and CREATE
+-- | IF NOT EXIST qualifier for CREATE
 data IfNotExist = IfNotExist
+    deriving (Show,Eq)
+
+-- | IF EXIST qualifier for DROP
+data IfExist = IfExist
     deriving (Show,Eq)
 
 data Order = Ascendent | Descendent
@@ -189,7 +194,7 @@ data ColumnConstraint =
       Constraint_NotNull
     | Constraint_Unique
     | Constraint_PrimaryKey
-    | Constraint_ForeignKey QualifiedColumnName
+    | Constraint_References QualifiedColumnName
     | Constraint_Default
     | Constraint_UnknownFunction String [String]
     | Constraint_Unknown String
@@ -200,7 +205,7 @@ data ColumnConstraint =
 data Create = CreateQuery (Maybe IfNotExist) TableName [ColumnDecl]
     deriving (Show,Eq)
 
-data Drop = DropTable (Maybe IfNotExist) TableName
+data Drop = DropTable (Maybe IfExist) TableName
     deriving (Show,Eq)
 
 data Update = UpdateQuery TableName [(ColumnName, Value)] (Maybe WhereExpr)
