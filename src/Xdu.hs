@@ -215,9 +215,8 @@ main = do
                         Just ([], suffix) -> toThreshold 1 (map toLower suffix)
                         Just (n, suffix)  -> toThreshold (read n) (map toLower suffix)
                         Nothing           -> \_ -> False
-            
+
             xdu term
                 (toParam detailedFlag)
                 highlighted
                 (if null (toParam allArgs) then ["."] else toParam allArgs)
-

@@ -38,4 +38,8 @@ preferred-exts = jpg jpeg
 [meta]
 type = sqlite3
 path = /local/meta.sqlite3
+
+[unique]
+source = /my/path
+destination = /my/path/hash
 ```

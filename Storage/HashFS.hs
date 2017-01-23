@@ -13,6 +13,7 @@ module Storage.HashFS
     , hashFile
     , hashFileContext
     , withConfig
+    , withConfigAt
     , findProviderByName
     {-
     , initializeLocally
@@ -126,6 +127,19 @@ onlyLocalProviders = filter (isLocal . providerBackend)
 
 hashFileContext :: HashAlgorithm h => FilePath -> IO (Digest h)
 hashFileContext fp = hashFile hasherInitContext fp
+
+withConfigAt :: FilePath -> (forall h . (Show h, HashAlgorithm h) => h -> ConfigFile -> IO ()) -> IO ()
+withConfigAt configFile f = do
+    mcfg <- readAt configFile
+    case mcfg of
+        Nothing  -> error "no config file"
+        Just cfg ->
+            case digestAlgorithm $ configDigest cfg of
+                "sha224"     -> f SHA224 cfg
+                "sha256"     -> f SHA256 cfg
+                "blake2-224" -> f Blake2s_224 cfg
+                "blake2-256" -> f Blake2s_256 cfg
+                unknown      -> error $ "unknown hash: " ++ unknown
 
 withConfig :: (forall h . (Show h, HashAlgorithm h) => Context h -> IO ()) -> IO ()
 withConfig f = do

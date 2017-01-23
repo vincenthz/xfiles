@@ -22,6 +22,7 @@ module Tools.Config
     , getAllSections
     -- * KeyValues querying
     , kvsGet
+    , kvsGetAll
     , kvsFromList
     ) where
 
@@ -121,11 +122,17 @@ getAllSections :: [Config]
 getAllSections configs section =
     map sectionKVs $ mconcat $ map (filter ((==) section . sectionName) . unConfig) configs
 
--- | Try to find a key in a KeyValue dictionnary
+-- | Try to find a key in a KeyValue dictionary
 kvsGet :: KeyValues
        -> Key
        -> Maybe Value
 kvsGet (KeyValues kvs) key = lookup key kvs
+
+-- | Try to find all specific key in a KeyValue dictionary
+kvsGetAll :: KeyValues
+          -> Key
+          -> [Value]
+kvsGetAll (KeyValues kvs) key = map snd . filter ((==) key . fst) $ kvs
 
 kvsFromList :: [(Key, Value)] -> KeyValues
 kvsFromList = KeyValues

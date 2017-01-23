@@ -37,10 +37,14 @@ Library
                    , Storage.HashFS.Server
                    , Storage.HashFS.Protocol
                    , Storage.HashFS.Meta
+                   , Storage.HashFS.Path
+                   , Storage.HashFS.Hasher
                    , Storage.HashFS.Query
                    , Storage.HashFS.Log
                    , Storage.HashFS.IO
                    , Storage.HashFS.Utils
+                   , Storage.HashFS.Local
+                   , Storage.HashFS.ConfigFile
                    , Storage.LockFile
                    , Storage.Utils
   Other-modules:     Tools.ChronoFs.Marshall
@@ -68,13 +72,9 @@ Library
                    , Network.LSP.Context
                    , Network.LSP.IO
                    , Storage.HashFS.Types
-                   , Storage.HashFS.Path
-                   , Storage.HashFS.Hasher
-                   , Storage.HashFS.Local
                    , Storage.HashFS.Server.Handler
                    , Storage.HashFS.Server.Log
                    , Storage.HashFS.ProtocolUtils
-                   , Storage.HashFS.ConfigFile
                    , Data.SQL.Lexer
   Build-depends:     base >= 4.3 && < 5
                    , bytestring
@@ -160,6 +160,25 @@ Executable           filelock
                    , utf8-string
                    , filepath
                    , directory
+                   , process
+  Buildable:         True
+  default-language:  Haskell2010
+
+Executable           hashfs-unique
+  Main-Is:           Unique.hs
+  hs-source-dirs:    src
+  ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports -Wno-redundant-constraints
+  Build-depends:     base >= 4 && < 5
+                   , transformers
+                   , xfiles
+                   , memory
+                   , cryptonite
+                   , cli
+                   , bytestring
+                   , utf8-string
+                   , filepath
+                   , directory
+                   , unix
                    , process
   Buildable:         True
   default-language:  Haskell2010
