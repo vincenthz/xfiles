@@ -34,8 +34,9 @@ run h ctx = case configUnique ctx of
         putStrLn "no unique configuration"
         exitFailure
     Just unique -> do
-        let src = configUniqueSource unique
+        let srcs = configUniqueSource unique
             dst = configUniqueDestination unique
+            ignores = configUniqueIgnore unique
 
         let hasher = hasherInit h
             hashfsConf = makeConf [2] hasher OutputBase32 dst
@@ -43,7 +44,7 @@ run h ctx = case configUnique ctx of
         dstExist <- doesDirectoryExist dst
         when (not dstExist) $ Local.initialize hashfsConf
 
-        let initSt = (0, 0, 0, 0)
+        let initSt = (0, 0, 0, 0) :: (Int, Int, Int, FileSize)
 
         term <- displayInit
 
@@ -80,11 +81,12 @@ run h ctx = case configUnique ctx of
             dirCallback dir
                 | dir == dst             = return False
                 | isSuffixOf "/.git" dir = return False
+                | elem dir ignores       = return False
                 | otherwise              = do
                     liftIO $ displayLn term Blue dir
                     return True
         displayLn term Red "unique"
-        (files, skipped, saved, savedSz) <- execStateT (dirTraverse_ src fileCallback dirCallback) initSt
+        (files, skipped, saved, savedSz) <- execStateT (mapM_ (\src -> dirTraverse_ src fileCallback dirCallback) srcs) initSt
 
         displayLn term Red ("files      : " ++ show files)
         displayLn term Red ("skipped    : " ++ show skipped)

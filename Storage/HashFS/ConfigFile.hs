@@ -30,7 +30,7 @@ data ConfigMeta = ConfigMeta
     } deriving (Show,Eq)
 
 data ConfigUnique = ConfigUnique
-    { configUniqueSource      :: FilePath
+    { configUniqueSource      :: [FilePath]
     , configUniqueDestination :: FilePath
     , configUniqueIgnore      :: [FilePath] -- relative to source
     } deriving (Show,Eq)
@@ -85,13 +85,13 @@ readAt fp = do
                     Nothing
             _ -> Nothing
     parseUnique kvs  =
-        case map (kvsGet kvs) ["source", "destination"] of
-            [Just src, Just dst] ->
-                Just $ ConfigUnique { configUniqueSource      = src
+        case kvsGet kvs "destination" of
+            Just dst ->
+                Just $ ConfigUnique { configUniqueSource      = kvsGetAll kvs "source"
                                     , configUniqueDestination = dst
                                     , configUniqueIgnore      = kvsGetAll kvs "ignore"
                                     }
-            _                    -> Nothing
+            Nothing -> Nothing
     parseDigest cs =
         let alg = get cs "digest" "algorithm"
          in ConfigDigest
