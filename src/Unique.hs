@@ -66,11 +66,11 @@ run h ctx = case configUnique ctx of
                             else
                                 return False
 
-                        let color = if existsAlready then Red else Green
+                        let color = if newLink then Yellow else if existsAlready then Green else Red
 
                         -- dig <- liftIO $ hashFile hasher file
                         liftIO $ display term [Fg color, LeftT 26 (show dig), T " ", Fg Green, T (file) ]
-                        liftIO $ displayLn term Red ""
+                        liftIO $ displayLn term White ""
                         modify $ \(files,skipped,saved,savedSz) ->
                             ( files+1
                             , skipped + if existsAlready then 1 else 0
