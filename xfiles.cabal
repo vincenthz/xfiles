@@ -128,7 +128,7 @@ Executable           chronofs
 
 Executable           chronofs-shell
   Main-Is:           Shell.hs
-  hs-source-dirs:    Src
+  hs-source-dirs:    src
   ghc-options:       -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-missing-signatures -fno-warn-unused-imports -Wno-redundant-constraints
   Build-depends:     base, mtl, xfiles, data-default-class, terminfo, system-filepath, time, old-locale, regex-posix
   Buildable:         False
