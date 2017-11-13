@@ -24,6 +24,9 @@ eat predicate = Stream $ \el ->
             | predicate x -> Right ((), xs)
             | otherwise   -> Left ("unexpected atom got: " ++ show x ++ " next=" ++ show (take 5 xs))
 
+isEnd :: Stream elem Bool
+isEnd = Stream $ \el -> Right (null el, el)
+
 newtype Stream elem a = Stream { runStream :: [elem] -> Either String (a, [elem]) }
 
 instance Functor (Stream elem) where

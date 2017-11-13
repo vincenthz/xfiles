@@ -15,7 +15,7 @@ import           System.Directory.Traverse
 import           System.Environment
 import           System.Exit
 import           System.FilePath
-import           System.Directory
+import           System.Directory hiding (getFileSize)
 import           Tools.ChronoFs (showSZ)
 import           Tools.Utils
 
