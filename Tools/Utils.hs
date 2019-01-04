@@ -23,6 +23,8 @@ instance Show Bytes where
     show (Bytes w) = showSZ w
 instance Show BytesCondensed where
     show (BytesCondensed (Bytes w)) = showSZsmall w
+instance Semigroup Bytes where
+    (<>) (Bytes a) (Bytes b) = Bytes (a+b)
 instance Monoid Bytes where
     mempty = Bytes 0
     mappend (Bytes a) (Bytes b) = Bytes (a+b)

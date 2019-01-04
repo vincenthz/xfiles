@@ -1,8 +1,12 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PatternSynonyms #-}
 module Main where
 
+import           Basement.Bounded
+import           Basement.Compat.Semigroup
+import           Basement.Compat.IsList
 import           Control.Concurrent
 import           Control.Monad
 import           Console.Display
@@ -20,6 +24,24 @@ import           Tools.ChronoFs (showSZ)
 import           Tools.Utils
 
 import qualified Paths_xfiles
+
+pattern White :: ColorComponent
+pattern White = 0
+
+pattern Red :: ColorComponent
+pattern Red = 1
+
+pattern Green :: ColorComponent
+pattern Green = 2
+
+pattern Blue :: ColorComponent
+pattern Blue = 3
+
+pattern Cyan :: ColorComponent
+pattern Cyan = 4
+
+pattern Yellow :: ColorComponent
+pattern Yellow = 5
 
 data Format = Image | ExeLibObj | Music | Video | Text | Document | Other
     deriving (Show,Eq,Bounded,Enum)
@@ -48,6 +70,9 @@ data St = St
     , stFormats :: FormatSize
     }
 
+instance Semigroup St where
+    (<>) (St d1 f1 _ sz1 ft1) (St d2 f2 _ sz2 ft2) =
+        St (d1+d2) (f1+f2) "" (sz1 `mappend` sz2) (ft1 `mappend` ft2)
 instance Monoid St where
     mempty = newSt
     mappend (St d1 f1 _ sz1 ft1) (St d2 f2 _ sz2 ft2) =
@@ -56,6 +81,10 @@ instance Monoid St where
 newtype FormatSize = FormatSize (Bytes, Bytes, Bytes, Bytes, Bytes, Bytes, Bytes)
     deriving (Show,Eq)
 
+instance Semigroup FormatSize where
+    (<>) (FormatSize (a1,b1,c1,d1,e1,f1,g1))
+         (FormatSize (a2,b2,c2,d2,e2,f2,g2)) =
+        FormatSize (a1`mappend`a2,b1`mappend`b2,c1`mappend`c2,d1`mappend`d2,e1`mappend`e2,f1`mappend`f2, g1`mappend`g2)
 instance Monoid FormatSize where
     mempty = FormatSize (mempty,mempty,mempty,mempty,mempty,mempty,mempty)
     mappend (FormatSize (a1,b1,c1,d1,e1,f1,g1))
@@ -97,10 +126,10 @@ appendFileStat mv sz fmt = modifyMVar_ mv $ \st -> return $
 printStats detailed needHighlight summ mv = readMVar mv >>= \st -> do
     either display summarySet summ $ (txt st)
   where
-    txt st = [Fg Red, LeftT 6 (show $ stFiles st), T " "
-             ,Fg szCol, RightT 8 (show $ stData st), T " "
+    txt st = [Fg Red, LeftT 6 (fromList $ show $ stFiles st), T (fromList " ")
+             ,Fg szCol, RightT 8 (fromList $ show $ stData st), T (fromList " ")
              ]
-             ++ [Fg Green, T (stCurrentDir st), T " "]
+             ++ [Fg Green, T (fromList $ stCurrentDir st), T (fromList " ")]
              ++ formatDisplay (showFormat $ stFormats st)
              ++ [NA]
       where
@@ -114,20 +143,20 @@ printStats detailed needHighlight summ mv = readMVar mv >>= \st -> do
             (concatMap render $ zip "IVMTDEO" [a,b,c,d,e,f,g])
           where render (cFormat, sz)
                     | sz == mempty = []
-                    | otherwise    = [Fg Red, T [cFormat,':'], Fg Cyan, RightT 4 (show $ BytesCondensed sz), T " "]
+                    | otherwise    = [Fg Red, T (fromList [cFormat,':']), Fg Cyan, RightT 4 (fromList $ show $ BytesCondensed sz), T (fromList " ")]
 
 while a f = f a >>= \(b, a') -> if b then while a' f else return ()
 
 xdu term detailed highlighted dirs = do
-    display term [Fg Red, LeftT 6 "#file ", T " ", RightT 8 "size", NA]
-    displayLn term White ""
+    display term [Fg Red, LeftT 6 (fromList "#file "), T (fromList " "), RightT 8 (fromList "size"), NA]
+    displayLn term White (fromList "")
     sts <- mapM showStats dirs
 
-    displayLn term Blue "========================================================="
+    displayLn term Blue (fromList "=========================================================")
     printStats detailed highlighted (Left term) =<< newMVar (mconcat $ catMaybes sts)
 
-    displayLn term White ""
-    displayLn term White ""
+    displayLn term White (fromList "")
+    displayLn term White (fromList "")
   where
     showStats :: FilePath -> IO (Maybe St)
     showStats path = do
@@ -143,11 +172,11 @@ xdu term detailed highlighted dirs = do
         appendFileStat st sz (filePathToFormat path)
         setCurrentDir st path
         printStats detailed highlighted (Left term) st
-        displayLn term Red ""
+        displayLn term Red (fromList "")
         Just <$> readMVar st
 
     showError path = do
-        displayLn term Red ("error: " ++ path ++ " : doesn't exist")
+        displayLn term Red $ fromList ("error: " ++ path ++ " : doesn't exist")
         return Nothing
 
     showDirStats :: FilePath -> IO (Maybe St)
@@ -182,7 +211,7 @@ xdu term detailed highlighted dirs = do
                     return (True, min (delay + 20000) 200000)
         setCurrentDir st rootDir
         printStats detailed highlighted (Left term) st
-        displayLn term Red ""
+        displayLn term Red (fromList "")
         Just <$> readMVar st
 
     depthMax = 4

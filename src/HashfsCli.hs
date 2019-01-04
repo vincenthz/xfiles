@@ -1,5 +1,8 @@
 module Main where
 
+import           Basement.Bounded
+import           Basement.Compat.IsList
+import qualified Basement.String as S
 import           Network.Socket hiding (send,recv)
 import           System.Timeout
 import           System.Environment
@@ -187,7 +190,7 @@ doImport disp metaTags repo args context = do
                 di <- grabDataInfo (contextMetaviders context) filePath
 
                 (dup, d) <- importInto (fmap (\(a,b) -> (a,b,metaTags)) di) prov ImportCopy filePath
-                display disp [Fg Green, T (if dup then "" else "✓ "), NA, T $ show d, T " ", T filePath, T "\n"]
+                display disp [Fg (zn64 2), T $ fromList (if dup then "" else "✓ "), NA, T $ fromList $ show d, T (fromList " "), T (fromList filePath), T (fromList "\n")]
 
 showBase32 :: Digest h -> String
 showBase32 = show

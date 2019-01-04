@@ -3,6 +3,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Tools.ChronoFs.Utils where
 
+import           Basement.Bounded
+import           Basement.Compat.IsList
+import qualified Basement.String as S
 import           Control.Applicative
 import           Control.Monad (when, (>=>))
 import           Control.Monad.IO.Class
@@ -25,13 +28,21 @@ import           System.FilePath
 
 import           Crypto.Hash
 
-printTerminalLn :: (MonadState BackupState m, MonadIO m) => Color -> [Char] -> m ()
-printTerminalLn color s = printTerminal color (s ++ "\n")
+data Color = Red | Green | Yellow
+    deriving (Show,Eq)
 
-printTerminal :: (MonadState BackupState m, MonadIO m) => Color -> String -> m ()
+colorToComponent :: Color -> ColorComponent
+colorToComponent Red = zn64 1
+colorToComponent Green = zn64 2
+colorToComponent Yellow = zn64 3
+
+printTerminalLn :: (MonadState BackupState m, MonadIO m) => Color -> [Char] -> m ()
+printTerminalLn color s = printTerminal (colorToComponent color) (s ++ "\n")
+
+printTerminal :: (MonadState BackupState m, MonadIO m) => ColorComponent -> String -> m ()
 printTerminal color s = do
     term <- gets terminal
-    liftIO $ displayTextColor term color s
+    liftIO $ displayTextColor term color (fromList s)
 
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM cond f = cond >>= \b -> when b f

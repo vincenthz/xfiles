@@ -1,5 +1,8 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 module Main where
 
+import           Basement.Compat.IsList
 import           System.Directory.Traverse
 import           Console.Options
 import           Console.Display
@@ -28,6 +31,25 @@ import           Storage.HashFS.Hasher
 import           Storage.Utils
 
 import           System.Posix.Files (createLink)
+
+pattern White :: ColorComponent
+pattern White = 0
+
+pattern Red :: ColorComponent
+pattern Red = 1
+
+pattern Green :: ColorComponent
+pattern Green = 2
+
+pattern Blue :: ColorComponent
+pattern Blue = 3
+
+pattern Cyan :: ColorComponent
+pattern Cyan = 4
+
+pattern Yellow :: ColorComponent
+pattern Yellow = 5
+
 
 run h ctx = case configUnique ctx of
     Nothing -> do
@@ -69,7 +91,7 @@ run h ctx = case configUnique ctx of
                         let color = if newLink then Yellow else if existsAlready then Green else Red
 
                         -- dig <- liftIO $ hashFile hasher file
-                        liftIO $ display term [Fg color, LeftT 26 (show dig), T " ", Fg Green, T (file) ]
+                        liftIO $ display term [Fg color, LeftT 26 (fromList $ show dig), T " ", Fg Green, T (fromList file) ]
                         liftIO $ displayLn term White ""
                         modify $ \(files,skipped,saved,savedSz) ->
                             ( files+1
@@ -83,15 +105,15 @@ run h ctx = case configUnique ctx of
                 | isSuffixOf "/.git" dir = return False
                 | elem dir ignores       = return False
                 | otherwise              = do
-                    liftIO $ displayLn term Blue dir
+                    liftIO $ displayLn term Blue (fromList dir)
                     return True
         displayLn term Red "unique"
         (files, skipped, saved, savedSz) <- execStateT (mapM_ (\src -> dirTraverse_ src fileCallback dirCallback) srcs) initSt
 
-        displayLn term Red ("files      : " ++ show files)
-        displayLn term Red ("skipped    : " ++ show skipped)
-        displayLn term Red ("# saved    : " ++ show saved)
-        displayLn term Red ("saved size : " ++ show savedSz ++ " bytes")
+        displayLn term Red $ fromList ("files      : " ++ show files)
+        displayLn term Red $ fromList ("skipped    : " ++ show skipped)
+        displayLn term Red $ fromList ("# saved    : " ++ show saved)
+        displayLn term Red $ fromList ("saved size : " ++ show savedSz ++ " bytes")
         exitSuccess
 
 main = defaultMain $ do

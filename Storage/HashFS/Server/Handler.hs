@@ -12,6 +12,7 @@ module Storage.HashFS.Server.Handler
     , grab
     ) where
 
+import           Basement.Compat.Semigroup
 import           Control.Concurrent (ThreadId, forkIO)
 import           Control.Concurrent.Async
 import           Control.Concurrent.MVar
@@ -33,6 +34,12 @@ data FireWall = FireWall
     { blacklist :: SockAddr -> Bool
     , whitelist :: SockAddr -> Bool
     }
+
+instance Semigroup FireWall where
+    (<>) f1 f2 =
+        FireWall { blacklist = \a -> blacklist f1 a || blacklist f2 a
+                 , whitelist = \a -> whitelist f1 a && whitelist f2 a
+                 }
 
 instance Monoid FireWall where
     mempty        = FireWall (\_ -> False) (\_ -> True)
